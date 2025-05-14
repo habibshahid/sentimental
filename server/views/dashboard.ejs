@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analysis Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            border: none;
+        }
+        .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+            padding: 1rem 1.25rem;
+            border-top-left-radius: 10px !important;
+            border-top-right-radius: 10px !important;
+        }
+        .stat-card {
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .bg-primary-light {
+            background-color: rgba(13, 110, 253, 0.1);
+            color: #0d6efd;
+        }
+        .bg-success-light {
+            background-color: rgba(25, 135, 84, 0.1);
+            color: #198754;
+        }
+        .bg-warning-light {
+            background-color: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+        }
+        .bg-info-light {
+            background-color: rgba(13, 202, 240, 0.1);
+            color: #0dcaf0;
+        }
+        .bg-danger-light {
+            background-color: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+        }
+        .header-icon {
+            margin-right: 8px;
+        }
+        #testForm {
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .footer {
+            margin-top: 2rem;
+            padding: 1rem 0;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+            color: #6c757d;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .host-selector {
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="<%= basePath %>">
+                <i class="bi bi-bar-chart-line me-2"></i>
+                Sentiment Analysis Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#stats">Statistics</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#charts">Charts</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#test">Test API</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="<%= basePath %>/api/docs" target="_blank">API Docs</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-1"></i>
+                            <%= typeof username !== 'undefined' ? username : 'User' %>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="<%= basePath %>/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h2 class="mb-0">Welcome to Sentiment Analysis Dashboard</h2>
+                                <p class="lead mb-0">
+                                    Real-time insights into your sentiment analysis operations.
+                                </p>
+                            </div>
+                            <div class="host-selector">
+                                <label for="hostSelect" class="form-label">Select Customer:</label>
+                                <select class="form-select" id="hostSelect">
+									<option value="">Select Customer</option>
+                                    <!-- Host options will be populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            The dashboard automatically refreshes every 30 seconds to show the latest data.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" id="stats">
+            <div class="col-lg-12 mb-3">
+                <h3>
+                    <i class="bi bi-speedometer2 header-icon"></i>Performance Overview
+                    <div class="float-end">
+                        <button class="btn btn-sm btn-outline-secondary me-1" id="refreshStats">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" id="resetStats" data-bs-toggle="modal" data-bs-target="#resetStatsModal">
+                            <i class="bi bi-trash me-1"></i>Reset
+                        </button>
+                    </div>
+                </h3>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-icon bg-primary-light rounded-circle p-3 d-inline-block mx-auto">
+                        <i class="bi bi-graph-up"></i>
+                    </div>
+                    <div class="stat-value" id="totalRequests">-</div>
+                    <div class="stat-label">Total Requests</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-icon bg-success-light rounded-circle p-3 d-inline-block mx-auto">
+                        <i class="bi bi-database-check"></i>
+                    </div>
+                    <div class="stat-value" id="cacheHitRate">-</div>
+                    <div class="stat-label">Cache Hit Rate</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card stat-card">
+                    <div class="stat-icon bg-info-light rounded-circle p-3 d-inline-block mx-auto">
+                        <i class="bi bi-cash-coin"></i>
+                    </div>
+                    <div class="stat-value" id="costSavings">-</div>
+                    <div class="stat-label">Cost Savings</div>
+                </div>
+            </div>
+
+            <!-- Additional Stats -->
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="cacheHits">-</div>
+                    <div class="stat-label">Cache Hits</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="cacheMisses">-</div>
+                    <div class="stat-label">Cache Misses</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalCost">-</div>
+                    <div class="stat-label">API Cost (USD)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalPrice">-</div>
+                    <div class="stat-label">Selling Price (USD)</div>
+                </div>
+            </div>
+            
+            <div class="col-md-3 mt-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="costSaved">-</div>
+                    <div class="stat-label">Cost Saved (USD)</div>
+                </div>
+            </div>
+            <div class="col-md-3 mt-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="priceSaved">-</div>
+                    <div class="stat-label">Price Saved (USD)</div>
+                </div>
+            </div>
+            <div class="col-md-3 mt-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="profit">-</div>
+                    <div class="stat-label">Total Profit (USD)</div>
+                </div>
+            </div>
+            <div class="col-md-3 mt-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="totalTokens">-</div>
+                    <div class="stat-label">Total Tokens Processed</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4" id="charts">
+            <div class="col-lg-12 mb-3">
+                <h3>
+                    <i class="bi bi-bar-chart header-icon"></i>Usage Analytics
+                    <div class="float-end">
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#cleanupModal">
+                            <i class="bi bi-calendar-x me-1"></i>Clean Old Data
+                        </button>
+                    </div>
+                </h3>
+            </div>
+
+            <!-- Charts -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Hourly Requests</span>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary active" id="hourly-requests">Requests</button>
+                            <button class="btn btn-outline-secondary" id="hourly-cache">Cache</button>
+                            <button class="btn btn-outline-secondary" id="hourly-cost">Cost</button>
+                            <button class="btn btn-outline-secondary" id="hourly-price">Price</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="hourlyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Daily Statistics</span>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary active" id="daily-requests">Requests</button>
+                            <button class="btn btn-outline-secondary" id="daily-cache">Cache</button>
+                            <button class="btn btn-outline-secondary" id="daily-cost">Cost</button>
+                            <button class="btn btn-outline-secondary" id="daily-price">Price</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="dailyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 mt-4">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Model Usage Distribution</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="modelChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 mt-4">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Cache Performance</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="cacheChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4" id="test">
+            <div class="col-lg-12 mb-3">
+                <h3><i class="bi bi-lightning header-icon"></i>Test API</h3>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Analyze Text</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="testForm">
+                            <div class="mb-3">
+                                <label for="inputText" class="form-label">Text to Analyze:</label>
+                                <textarea class="form-control" id="inputText" rows="4" required
+                                    placeholder="Enter text to analyze sentiment..."></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="modelSelect" class="form-label">Model:</label>
+                                <select class="form-select" id="modelSelect">
+                                    <option value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125 (Default)</option>
+                                    <option value="gpt-4-turbo">gpt-4-turbo (Higher quality)</option>
+                                    <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-send me-2"></i>Analyze
+                            </button>
+                            <button type="button" id="clearCache" class="btn btn-outline-danger ms-2">
+                                <i class="bi bi-trash me-2"></i>Clear Cache
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Results</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="loadingResults" class="d-none text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3">Analyzing text...</p>
+                        </div>
+                        <div id="resultsContainer" class="d-none">
+                            <div class="mb-3">
+                                <div class="alert alert-primary d-flex align-items-center" role="alert">
+                                    <i class="bi bi-info-circle-fill me-2"></i>
+                                    <div>
+                                        <strong>Source:</strong> <span id="resultSource">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="card-title mb-1">Sentiment</h6>
+                                            <p class="card-text mb-0" id="resultSentiment">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="card-title mb-1">Language</h6>
+                                            <p class="card-text mb-0" id="resultLanguage">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="card-title mb-1">Intents</h6>
+                                            <p class="card-text mb-0" id="resultIntents">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="card-title mb-1">Profanity</h6>
+                                            <p class="card-text mb-0" id="resultProfanity">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <h6>Cost & Usage</h6>
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Input Tokens</td>
+                                            <td id="resultInputTokens">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Output Tokens</td>
+                                            <td id="resultOutputTokens">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>API Cost</td>
+                                            <td id="resultCost">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Selling Price</td>
+                                            <td id="resultPrice">-</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Profit</td>
+                                            <td id="resultProfit">-</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="accordion" id="resultAccordion">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                            data-bs-target="#rawResults">
+                                            Raw JSON Response
+                                        </button>
+                                    </h2>
+                                    <div id="rawResults" class="accordion-collapse collapse" data-bs-parent="#resultAccordion">
+                                        <div class="accordion-body">
+                                            <pre id="resultRaw" class="bg-light p-3 rounded">{}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="noResults" class="text-center py-5">
+                            <i class="bi bi-chat-square-text" style="font-size: 3rem; color: #dee2e6;"></i>
+                            <p class="mt-3 text-muted">Submit text to see analysis results</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Sentiment Analysis Dashboard &copy; 2025</p>
+        </div>
+    </div>
+
+    <!-- Reset Stats Modal -->
+    <div class="modal fade" id="resetStatsModal" tabindex="-1" aria-labelledby="resetStatsModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="resetStatsModalLabel">Reset Analytics Data</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-danger">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <strong>Warning:</strong> This will permanently delete all analytics data. This action cannot be undone.
+            </div>
+            <p>Are you sure you want to reset all analytics data?</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-danger" id="confirmResetStats">Reset Analytics</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Cleanup Modal -->
+    <div class="modal fade" id="cleanupModal" tabindex="-1" aria-labelledby="cleanupModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="cleanupModalLabel">Clean Up Old Data</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Clean up analytics data older than:</p>
+            <div class="mb-3">
+              <select class="form-select" id="cleanupDays">
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirmCleanup">Clean Up</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get base path from server-side
+        const BASE_PATH = '<%= basePath %>';
+        let currentHost = 'default';
+        
+        // Charts initialization
+        let hourlyChart = null;
+        let dailyChart = null;
+        let modelChart = null;
+        let cacheChart = null;
+
+        // Current chart modes
+        let hourlyMode = 'requests';
+        let dailyMode = 'requests';
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fetch initial data
+            fetchAnalytics();
+            
+            // Load hosts for the dropdown
+            loadHosts();
+            
+            // Set up auto-refresh
+            setInterval(fetchAnalytics, 30000); // Refresh every 30 seconds
+            
+            // Set up host selection
+            document.getElementById('hostSelect').addEventListener('change', function() {
+                currentHost = this.value;
+                fetchAnalytics();
+            });
+            
+            // Set up form and button handlers
+            document.getElementById('testForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                analyzeText();
+            });
+            
+            document.getElementById('clearCache').addEventListener('click', function() {
+                clearCache();
+            });
+
+            // Analytics management buttons
+            document.getElementById('refreshStats').addEventListener('click', function() {
+                fetchAnalytics();
+            });
+            
+            document.getElementById('confirmResetStats').addEventListener('click', function() {
+                resetAnalytics();
+            });
+            
+            document.getElementById('confirmCleanup').addEventListener('click', function() {
+                cleanupAnalytics();
+            });
+            
+            // Set up chart toggle buttons
+            document.getElementById('hourly-requests').addEventListener('click', function() {
+                setHourlyChartMode('requests');
+            });
+            
+            document.getElementById('hourly-cache').addEventListener('click', function() {
+                setHourlyChartMode('cache');
+            });
+            
+            document.getElementById('hourly-cost').addEventListener('click', function() {
+                setHourlyChartMode('cost');
+            });
+            
+            document.getElementById('hourly-price').addEventListener('click', function() {
+                setHourlyChartMode('price');
+            });
+            
+            document.getElementById('daily-requests').addEventListener('click', function() {
+                setDailyChartMode('requests');
+            });
+            
+            document.getElementById('daily-cache').addEventListener('click', function() {
+                setDailyChartMode('cache');
+            });
+            
+            document.getElementById('daily-cost').addEventListener('click', function() {
+                setDailyChartMode('cost');
+            });
+            
+            document.getElementById('daily-price').addEventListener('click', function() {
+                setDailyChartMode('price');
+            });
+        });
+
+        // Fetch analytics data
+        function fetchAnalytics() {
+            fetch(`/sentiment/api/analytics?host=${encodeURIComponent(currentHost)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Check if MongoDB is available by looking at data
+                    if (data && data.mongodbNotAvailable) {
+                        //showMongoDBWarning();
+                    } else {
+                        hideMongoDBWarning();
+                    }
+                    
+                    updateDashboard(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching analytics:', error);
+                });
+        }
+        
+        // Show MongoDB warning message
+        function showMongoDBWarning() {
+            // Check if warning already exists
+            if (!document.getElementById('mongodb-warning')) {
+                const warningDiv = document.createElement('div');
+                warningDiv.id = 'mongodb-warning';
+                warningDiv.className = 'alert alert-warning mb-4';
+                warningDiv.innerHTML = `
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>Analytics Limited:</strong> MongoDB connection not available. Analytics tracking is disabled.
+                    Please configure MongoDB in your environment variables to enable full analytics functionality.
+                `;
+                
+                // Insert after the first card
+                const firstCard = document.querySelector('.card');
+                firstCard.parentNode.insertBefore(warningDiv, firstCard.nextSibling);
+            }
+        }
+        
+        // Hide MongoDB warning message
+        function hideMongoDBWarning() {
+            const warning = document.getElementById('mongodb-warning');
+            if (warning) {
+                warning.remove();
+            }
+        }
+        
+        // Load available hosts
+        function loadHosts() {
+            fetch(`/sentiment/api/analytics/hosts`)
+                .then(response => response.json())
+                .then(data => {
+					console.log(data);
+                    const hostSelect = document.getElementById('hostSelect');
+                    
+                    // Clear existing options except default
+                    while (hostSelect.options.length > 1) {
+                        hostSelect.remove(1);
+                    }
+                    
+                    // Add hosts from the API
+                    if (data.hosts && data.hosts.length > 0) {
+                        data.hosts.forEach(host => {
+                            const option = document.createElement('option');
+                            option.value = host.host;
+                            option.textContent = `${host.host} (${host.totalRequests} requests)`;
+                            hostSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading hosts:', error);
+                });
+        }
+
+        // Update dashboard with analytics data
+        function updateDashboard(data) {
+            // Update statistics
+            document.getElementById('totalRequests').textContent = data.summary.totalRequests;
+            document.getElementById('cacheHits').textContent = data.summary.cacheHits;
+            document.getElementById('cacheMisses').textContent = data.summary.cacheMisses;
+            document.getElementById('cacheHitRate').textContent = data.summary.cacheHitRate;
+            document.getElementById('totalCost').textContent = '$' + data.summary.totalCost.toFixed(6);
+            document.getElementById('totalPrice').textContent = '$' + data.summary.totalPrice.toFixed(6);
+            document.getElementById('costSaved').textContent = '$' + data.summary.costSaved.toFixed(6);
+            document.getElementById('priceSaved').textContent = '$' + data.summary.priceSaved.toFixed(6);
+            document.getElementById('costSavings').textContent = '$' + data.summary.costSaved.toFixed(6);
+            
+            // Calculate and display profit
+            const profit = data.summary.totalPrice - data.summary.totalCost;
+            document.getElementById('profit').textContent = '$' + profit.toFixed(6);
+            
+            document.getElementById('totalTokens').textContent = formatNumber(data.summary.inputTokens + data.summary.outputTokens);
+            
+            // Update charts
+            updateHourlyChart(data.hourlyData);
+            updateDailyChart(data.dailyData);
+            updateModelChart(data.modelUsage);
+            updateCacheChart(data.summary);
+        }
+
+        // Update hourly chart
+        function updateHourlyChart(hourlyData) {
+            const ctx = document.getElementById('hourlyChart').getContext('2d');
+            
+            let labels = hourlyData.map(item => item.hour);
+            let datasets = [];
+            
+            if (hourlyMode === 'requests') {
+                datasets = [{
+                    label: 'Requests',
+                    data: hourlyData.map(item => item.requests),
+                    backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }];
+            } else if (hourlyMode === 'cache') {
+                datasets = [
+                    {
+                        label: 'Cache Hits',
+                        data: hourlyData.map(item => item.cacheHits),
+                        backgroundColor: 'rgba(25, 135, 84, 0.2)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Cache Misses',
+                        data: hourlyData.map(item => item.cacheMisses),
+                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        borderWidth: 1
+                    }
+                ];
+            } else if (hourlyMode === 'cost') {
+                datasets = [{
+                    label: 'Cost (USD)',
+                    data: hourlyData.map(item => item.cost),
+                    backgroundColor: 'rgba(13, 202, 240, 0.2)',
+                    borderColor: 'rgba(13, 202, 240, 1)',
+                    borderWidth: 1
+                }];
+            } else if (hourlyMode === 'price') {
+                datasets = [{
+                    label: 'Price (USD)',
+                    data: hourlyData.map(item => item.price),
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    borderWidth: 1
+                }];
+            }
+            
+            if (hourlyChart) {
+                hourlyChart.data.labels = labels;
+                hourlyChart.data.datasets = datasets;
+                hourlyChart.update();
+            } else {
+                hourlyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Update daily chart
+        function updateDailyChart(dailyData) {
+            const ctx = document.getElementById('dailyChart').getContext('2d');
+            
+            let labels = dailyData.map(item => item.day);
+            let datasets = [];
+            
+            if (dailyMode === 'requests') {
+                datasets = [{
+                    label: 'Requests',
+                    data: dailyData.map(item => item.requests),
+                    backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                }];
+            } else if (dailyMode === 'cache') {
+                datasets = [
+                    {
+                        label: 'Cache Hits',
+                        data: dailyData.map(item => item.cacheHits),
+                        backgroundColor: 'rgba(25, 135, 84, 0.2)',
+                        borderColor: 'rgba(25, 135, 84, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Cache Misses',
+                        data: dailyData.map(item => item.cacheMisses),
+                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                        borderColor: 'rgba(220, 53, 69, 1)',
+                        borderWidth: 1
+                    }
+                ];
+            } else if (dailyMode === 'cost') {
+                datasets = [{
+                    label: 'Cost (USD)',
+                    data: dailyData.map(item => item.cost),
+                    backgroundColor: 'rgba(13, 202, 240, 0.2)',
+                    borderColor: 'rgba(13, 202, 240, 1)',
+                    borderWidth: 1
+                }];
+            } else if (dailyMode === 'price') {
+                datasets = [{
+                    label: 'Price (USD)',
+                    data: dailyData.map(item => item.price),
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    borderWidth: 1
+                }];
+            }
+            
+            if (dailyChart) {
+                dailyChart.data.labels = labels;
+                dailyChart.data.datasets = datasets;
+                dailyChart.update();
+            } else {
+                dailyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Update model usage chart
+        function updateModelChart(modelUsage) {
+            const ctx = document.getElementById('modelChart').getContext('2d');
+            
+            if (!modelUsage || modelUsage.length === 0) {
+                modelUsage = [{ model: 'No Data', count: 1 }];
+            }
+            
+            const labels = modelUsage.map(item => item.model);
+            const data = modelUsage.map(item => item.count);
+            const backgroundColors = [
+                'rgba(13, 110, 253, 0.7)',
+                'rgba(25, 135, 84, 0.7)',
+                'rgba(255, 193, 7, 0.7)',
+                'rgba(13, 202, 240, 0.7)',
+                'rgba(111, 66, 193, 0.7)'
+            ];
+            
+            if (modelChart) {
+                modelChart.data.labels = labels;
+                modelChart.data.datasets[0].data = data;
+                modelChart.update();
+            } else {
+                modelChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: backgroundColors,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Update cache performance chart
+        function updateCacheChart(summary) {
+            const ctx = document.getElementById('cacheChart').getContext('2d');
+            
+            const labels = ['Cache Hits', 'Cache Misses'];
+            const data = [summary.cacheHits, summary.cacheMisses];
+            
+            if (cacheChart) {
+                cacheChart.data.datasets[0].data = data;
+                cacheChart.update();
+            } else {
+                cacheChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: [
+                                'rgba(25, 135, 84, 0.7)',
+                                'rgba(220, 53, 69, 0.7)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Set hourly chart mode
+        function setHourlyChartMode(mode) {
+            hourlyMode = mode;
+            
+            // Update button states
+            document.getElementById('hourly-requests').classList.remove('active');
+            document.getElementById('hourly-cache').classList.remove('active');
+            document.getElementById('hourly-cost').classList.remove('active');
+            document.getElementById('hourly-price').classList.remove('active');
+            
+            document.getElementById(`hourly-${mode}`).classList.add('active');
+            
+            // Fetch latest data to update chart
+            fetchAnalytics();
+        }
+
+        // Set daily chart mode
+        function setDailyChartMode(mode) {
+            dailyMode = mode;
+            
+            // Update button states
+            document.getElementById('daily-requests').classList.remove('active');
+            document.getElementById('daily-cache').classList.remove('active');
+            document.getElementById('daily-cost').classList.remove('active');
+            document.getElementById('daily-price').classList.remove('active');
+            
+            document.getElementById(`daily-${mode}`).classList.add('active');
+            
+            // Fetch latest data to update chart
+            fetchAnalytics();
+        }
+
+        // Analyze text
+        function analyzeText() {
+            const text = document.getElementById('inputText').value;
+            const model = document.getElementById('modelSelect').value;
+            
+            if (!text) return;
+            
+            // Show loading state
+            document.getElementById('noResults').classList.add('d-none');
+            document.getElementById('resultsContainer').classList.add('d-none');
+            document.getElementById('loadingResults').classList.remove('d-none');
+            
+            // Call API
+            fetch(`/sentiment/api/analyze`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    text, 
+                    model,
+                    host: currentHost
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResults(data);
+                // Refresh analytics
+                fetchAnalytics();
+            })
+            .catch(error => {
+                console.error('Error analyzing text:', error);
+                alert('An error occurred while analyzing the text. Please try again.');
+                document.getElementById('loadingResults').classList.add('d-none');
+                document.getElementById('noResults').classList.remove('d-none');
+            });
+        }
+
+        // Display analysis results
+        function displayResults(data) {
+            // Hide loading state
+            document.getElementById('loadingResults').classList.add('d-none');
+            document.getElementById('noResults').classList.add('d-none');
+            document.getElementById('resultsContainer').classList.remove('d-none');
+            
+            // Source
+            document.getElementById('resultSource').textContent = data.cached ? 'Cache' : 'API';
+            
+            // Basic info
+            document.getElementById('resultSentiment').textContent = 
+                `${data.sentiment.sentiment.charAt(0).toUpperCase() + data.sentiment.sentiment.slice(1)} (${data.sentiment.score})`;
+            document.getElementById('resultLanguage').textContent = 
+                data.language.charAt(0).toUpperCase() + data.language.slice(1);
+            document.getElementById('resultIntents').textContent = 
+                data.intents.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ');
+            
+            // Profanity
+            const profanityText = data.profanity.score > 0 
+                ? `Score: ${data.profanity.score} - Words: ${data.profanity.words.join(', ')}` 
+                : 'None detected';
+            document.getElementById('resultProfanity').textContent = profanityText;
+            
+            // Usage
+            document.getElementById('resultInputTokens').textContent = data.usage.prompt_tokens;
+            document.getElementById('resultOutputTokens').textContent = data.usage.completion_tokens;
+            document.getElementById('resultCost').textContent = `$${data.cost.totalCost.toFixed(6)}`;
+            document.getElementById('resultPrice').textContent = `$${data.cost.totalPrice.toFixed(6)}`;
+            
+            // Calculate and display profit
+            const profit = data.cost.totalPrice - data.cost.totalCost;
+            document.getElementById('resultProfit').textContent = `$${profit.toFixed(6)}`;
+            
+            // Raw
+            document.getElementById('resultRaw').textContent = JSON.stringify(data, null, 2);
+        }
+
+        // Clear cache
+        function clearCache() {
+            if (confirm('Are you sure you want to clear the cache?')) {
+                fetch(`/sentiment/api/cache`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    // Refresh analytics
+                    fetchAnalytics();
+                })
+                .catch(error => {
+                    console.error('Error clearing cache:', error);
+                    alert('An error occurred while clearing the cache.');
+                });
+            }
+        }
+        
+        // Reset analytics data
+        function resetAnalytics() {
+            fetch(`/sentiment/api/analytics?host=${encodeURIComponent(currentHost)}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('resetStatsModal'));
+                modal.hide();
+                
+                // Show success message
+                alert(data.message);
+                
+                // Refresh analytics
+                fetchAnalytics();
+            })
+            .catch(error => {
+                console.error('Error resetting analytics:', error);
+                alert('An error occurred while resetting analytics data.');
+            });
+        }
+        
+        // Clean up old analytics data
+        function cleanupAnalytics() {
+            const days = document.getElementById('cleanupDays').value;
+            
+            fetch(`/sentiment/api/analytics/cleanup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    olderThan: days,
+                    host: currentHost 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('cleanupModal'));
+                modal.hide();
+                
+                // Show success message
+                alert(data.message);
+                
+                // Refresh analytics
+                fetchAnalytics();
+            })
+            .catch(error => {
+                console.error('Error cleaning up analytics:', error);
+                alert('An error occurred while cleaning up analytics data.');
+            });
+        }
+
+        // Format number with commas
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+    </script>
+</body>
+</html>
