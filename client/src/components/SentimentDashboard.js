@@ -1,1674 +1,923 @@
+// src/components/SentimentDashboard.js - Fixed version with proper null checking
 import React, { useState, useEffect } from 'react';
-import { 
-  Layout, 
-  Card, 
-  Row, 
-  Col, 
-  Table, 
-  Typography, 
-  Statistic, 
-  Select, 
-  DatePicker, 
-  Tag, 
-  Space,
-  Divider,
-  Alert,
-  Empty,
-  Button,
-  Modal,
-  Descriptions,
-  Badge,
-  Spin,
-  message,
-  Tooltip,
-  Input,
-  Progress,
-  List
-} from 'antd';
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip as RechartsTooltip, 
-  Legend, 
-  ResponsiveContainer
-} from 'recharts';
-import { 
-  SmileOutlined, 
-  FrownOutlined, 
-  MehOutlined, 
-  MessageOutlined, 
-  UserOutlined, 
-  FilterOutlined,
-  LineChartOutlined,
-  ReloadOutlined,
-  DollarOutlined,
-  CloudOutlined,
-  DeleteOutlined,
-  ClockCircleOutlined,
-  SendOutlined,
-  WarningOutlined,
-  FileWordOutlined
-} from '@ant-design/icons';
+import { Layout, Card, Row, Col, Typography, Select, DatePicker, Table, Tag, Statistic, Space, Button, Breadcrumb, Progress, List, Badge, Tooltip, Spin, Alert, Empty } from 'antd';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { MessageOutlined, UserOutlined, TeamOutlined, HomeOutlined, SmileOutlined, MehOutlined, FrownOutlined, AlertOutlined, GlobalOutlined, ReloadOutlined } from '@ant-design/icons';
 import moment from 'moment';
+import apiService from '../services/apiService';
+import ControlledDateRangePicker from './DatePickerFix'; 
 
-const { Header, Content } = Layout;
-const { Title, Text, Paragraph } = Typography;
+const { Header, Content, Footer } = Layout;
+const { Title } = Typography;
 const { RangePicker } = DatePicker;
-const { TextArea } = Input;
 
-// API configuration
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-// Helper functions
-const getSentimentColor = (sentiment) => {
-  switch(sentiment) {
-    case 'positive': return '#52c41a';
-    case 'negative': return '#f5222d';
-    case 'neutral': return '#faad14';
-    default: return '#1890ff';
-  }
-};
-
-const getSentimentIcon = (sentiment) => {
-  switch(sentiment) {
-    case 'positive': return <SmileOutlined />;
-    case 'negative': return <FrownOutlined />;
-    case 'neutral': return <MehOutlined />;
-    default: return <MessageOutlined />;
-  }
-};
-
-// Word Cloud component for intents
-const WordCloud = ({ data, maxSize = 80, minSize = 14 }) => {
-  if (!data || data.length === 0) {
-    return <Empty description="No data available" />;
-  }
-
-  // Find max count to scale font sizes
-  const maxCount = Math.max(...data.map(item => item.value));
+// Function to generate word cloud for intents
+const generateWordCloudData = (intents) => {
+  if (!intents || !Array.isArray(intents) || intents.length === 0) return [];
   
-  // Generate random positions that don't overlap too much
-  const positions = [];
-  const words = data.map((item, index) => {
-    const size = Math.max(minSize, Math.min(maxSize, (item.value / maxCount) * maxSize));
-    
-    // Assign random positions
-    let left, top;
-    let attempts = 0;
-    let overlap = true;
-    
-    // Try to find a position that doesn't overlap too much with existing words
-    while (overlap && attempts < 50) {
-      left = Math.random() * 80; // % of container width
-      top = Math.random() * 80;  // % of container height
-      
-      // Check for overlap with existing positions
-      overlap = positions.some(pos => 
-        Math.abs(pos.left - left) < 15 && Math.abs(pos.top - top) < 15
-      );
-      
-      attempts++;
-    }
-    
-    positions.push({ left, top });
-    
-    return {
-      text: item.name,
-      value: item.value,
-      size,
-      left,
-      top,
-      color: getRandomColor(index)
-    };
-  });
+  const maxFontSize = 65;
+  const minFontSize = 16;
+  const maxCount = Math.max(...intents.map(w => w.value || 0));
+  const minCount = Math.min(...intents.map(w => w.value || 0));
   
-  return (
-    <div style={{ position: 'relative', width: '100%', height: 300, overflow: 'hidden' }}>
-      {words.map((word, index) => (
-        <div 
-          key={index}
-          style={{
-            position: 'absolute',
-            left: `${word.left}%`,
-            top: `${word.top}%`,
-            fontSize: `${word.size}px`,
-            fontWeight: 'bold',
-            color: word.color,
-            transform: 'translate(-50%, -50%)',
-            whiteSpace: 'nowrap',
-            textShadow: '1px 1px 2px rgba(0,0,0,0.1)',
-            cursor: 'default',
-            transition: 'all 0.3s ease'
-          }}
-          title={`${word.text}: ${word.value} occurrences`}
-        >
-          {word.text}
-        </div>
-      ))}
-    </div>
-  );
+  const range = maxCount - minCount;
+  const fontSizeRange = maxFontSize - minFontSize;
+  
+  // Generate colors based on count
+  const colors = ['#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', '#a4de6c', '#d0ed57', '#ffc658'];
+  
+  return intents.map(intent => ({
+    text: intent.name || 'Unknown',
+    value: intent.value || 0,
+    size: range === 0 
+      ? minFontSize + fontSizeRange / 2
+      : minFontSize + (((intent.value || 0) - minCount) / range) * fontSizeRange,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  }));
 };
 
-// Get a color from our palette for the word cloud
-const getRandomColor = (index) => {
-  const colors = [
-    '#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', 
-    '#f5222d', '#fa541c', '#faad14', '#a0d911', '#2f54eb', '#fadb14'
-  ];
-  return colors[index % colors.length];
+// Helper function to safely access nested properties
+const safelyGetNestedValue = (obj, path, defaultValue = null) => {
+  try {
+    return path.split('.').reduce((o, key) => (o && o[key] !== undefined) ? o[key] : null, obj) || defaultValue;
+  } catch (e) {
+    return defaultValue;
+  }
 };
 
-// Main component
 const SentimentDashboard = () => {
+  // State for data
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [channels, setChannels] = useState([]);
+  const [queues, setQueues] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [filteredMessages, setFilteredMessages] = useState([]);
-  const [stats, setStats] = useState({
-    totalMessages: 0,
-    sentiment: [],
-    channels: [],
-    languages: [],
-    intents: [],
-    profanity: { averageScore: 0, totalProfaneMessages: 0, words: [] },
-    tokens: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
-    estimatedCost: 0
-  });
-  // Initialize dates with proper Moment objects
-  const defaultStartDate = moment().subtract(30, 'days');
-  const defaultEndDate = moment();
-
-  const [filters, setFilters] = useState({
-    channel: 'all',
-    sentiment: 'all',
-    timeRange: [defaultStartDate, defaultEndDate],
-    language: 'all'
-  });
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
+  const [sentimentData, setSentimentData] = useState({ 
+    distribution: [], 
+    averageScore: 0, 
+    radarData: [],
     total: 0
   });
-  const [loading, setLoading] = useState(true);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [drilldown, setDrilldown] = useState(null);
-  const [cacheStats, setCacheStats] = useState(null);
-  const [cacheModalVisible, setCacheModalVisible] = useState(false);
-  const [costBreakdownVisible, setCostBreakdownVisible] = useState(false);
-  const [analyzeModalVisible, setAnalyzeModalVisible] = useState(false);
-  const [profanityModalVisible, setProfanityModalVisible] = useState(false);
-  const [textToAnalyze, setTextToAnalyze] = useState('');
-  const [analyzingText, setAnalyzingText] = useState(false);
-  const [analyzeResult, setAnalyzeResult] = useState(null);
-  const [apiModel, setApiModel] = useState('gpt-3.5-turbo-0125');
-
-  // Fetch messages from API
-  const fetchMessages = async () => {
+  const [channelData, setChannelData] = useState([]);
+  const [dayData, setDayData] = useState([]);
+  const [languageData, setLanguageData] = useState([]);
+  const [profanityData, setProfanityData] = useState({ 
+    percentage: 0, 
+    avgScore: 0, 
+    topWords: [], 
+    messagesWithProfanity: 0,
+    totalMessages: 0
+  });
+  const [intentsData, setIntentsData] = useState([]);
+  
+  // State for UI
+  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [selectedQueue, setSelectedQueue] = useState(null);
+  const [dateRange, setDateRange] = useState([moment().subtract(30, 'days'), moment()]);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
+  const [breadcrumbItems, setBreadcrumbItems] = useState([{ title: 'Home' }]);
+  
+  // Load initial data
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+  
+  // Fetch data when filters change
+  useEffect(() => {
+    if (!loading && (channels.length > 0 || queues.length > 0)) {
+      fetchFilteredData();
+    }
+  }, [selectedChannel, selectedQueue, dateRange]);
+  
+  // Fetch all dashboard data
+  const fetchDashboardData = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      const params = new URLSearchParams();
-      params.append('page', pagination.current);
-      params.append('limit', pagination.pageSize);
+      // Prepare filters based on current selections
+      const filters = {
+        startDate: dateRange[0].toISOString(),
+        endDate: dateRange[1].toISOString(),
+        channel: selectedChannel,
+        queue: selectedQueue
+      };
       
-      if (filters.channel !== 'all') {
-        params.append('channel', filters.channel);
-      }
+      // Fetch all dashboard data in one call
+      const dashboardData = await apiService.getDashboardData(filters);
       
-      if (filters.sentiment !== 'all') {
-        params.append('sentiment', filters.sentiment);
-      }
-      
-      if (filters.language !== 'all') {
-        params.append('language', filters.language);
-      }
-      
-      if (filters.timeRange && Array.isArray(filters.timeRange) && 
-          filters.timeRange[0] && filters.timeRange[1] &&
-          moment.isMoment(filters.timeRange[0]) && moment.isMoment(filters.timeRange[1])) {
-        
-        const startDate = filters.timeRange[0].format('YYYY-MM-DD');
-        const endDate = filters.timeRange[1].format('YYYY-MM-DD');
-        
-        console.log('Using date range:', startDate, 'to', endDate);
-        
-        params.append('startDate', startDate);
-        params.append('endDate', endDate);
-      } else {
-        console.log('Date range not valid:', filters.timeRange);
-      }
-      
-      const response = await fetch(`${API_URL}/messages?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch messages');
-      }
-      
-      const data = await response.json();
-      
-      if (!data.messages || !Array.isArray(data.messages)) {
-        console.warn('Invalid messages data format:', data);
-        setMessages([]);
-        setFilteredMessages([]);
-        setPagination({
-          ...pagination,
-          total: 0
-        });
-        return;
-      }
-      
-      // Normalize data structure to ensure consistency
-      const normalizedMessages = data.messages.map(msg => {
-        try {
-          // Ensure essential structure exists
-          if (!msg) return createEmptyMessage();
-          
-          // Create a deep copy to avoid mutation issues
-          const normalizedMsg = { ...msg };
-          
-          // Ensure extraPayload exists
-          if (!normalizedMsg.extraPayload) {
-            normalizedMsg.extraPayload = {};
-          }
-          
-          // Ensure sentimentAnalysis exists
-          if (!normalizedMsg.extraPayload.sentimentAnalysis) {
-            normalizedMsg.extraPayload.sentimentAnalysis = {
-              sentiment: { score: 0, sentiment: 'neutral' },
-              profanity: { score: 0, words: [] },
-              intents: [],
-              language: 'unknown',
-              usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-            };
-          } else {
-            // Ensure sentiment object exists
-            if (!normalizedMsg.extraPayload.sentimentAnalysis.sentiment) {
-              normalizedMsg.extraPayload.sentimentAnalysis.sentiment = { score: 0, sentiment: 'neutral' };
-            }
-            
-            // Ensure profanity object exists
-            if (!normalizedMsg.extraPayload.sentimentAnalysis.profanity) {
-              normalizedMsg.extraPayload.sentimentAnalysis.profanity = { score: 0, words: [] };
-            } else if (!normalizedMsg.extraPayload.sentimentAnalysis.profanity.words) {
-              normalizedMsg.extraPayload.sentimentAnalysis.profanity.words = [];
-            }
-            
-            // Ensure intents array exists
-            if (!normalizedMsg.extraPayload.sentimentAnalysis.intents) {
-              normalizedMsg.extraPayload.sentimentAnalysis.intents = [];
-            }
-            
-            // Ensure usage object exists
-            if (!normalizedMsg.extraPayload.sentimentAnalysis.usage) {
-              normalizedMsg.extraPayload.sentimentAnalysis.usage = { 
-                prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 
-              };
-            }
-          }
-          
-          return normalizedMsg;
-        } catch (error) {
-          console.error('Error normalizing message:', error, msg);
-          return createEmptyMessage();
-        }
+      // Update state with received data
+      setChannels(dashboardData.channels || []);
+      setQueues(dashboardData.queues || []);
+      setSentimentData(dashboardData.sentiment || { 
+        distribution: [], 
+        averageScore: 0, 
+        radarData: [],
+        total: 0
       });
-      
-      setMessages(normalizedMessages);
-      setFilteredMessages(normalizedMessages);
-      setPagination({
-        ...pagination,
-        total: data.pagination?.total || normalizedMessages.length
+      setChannelData(dashboardData.channelData || []);
+      setDayData(dashboardData.dayData || []);
+      setLanguageData(dashboardData.languageData || []);
+      setProfanityData(dashboardData.profanityStats || { 
+        percentage: 0, 
+        avgScore: 0, 
+        topWords: [], 
+        messagesWithProfanity: 0,
+        totalMessages: 0
       });
+      setIntentsData(dashboardData.intentsData || []);
+      
+      // Fetch messages separately (with pagination)
+      fetchMessages(1, filters);
+      
     } catch (error) {
-      console.error('Error fetching messages:', error);
-      message.error('Failed to fetch messages');
-      setMessages([]);
-      setFilteredMessages([]);
+      console.error('Error fetching dashboard data:', error);
+      setError('Failed to load dashboard data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
   
-  // Helper function to create an empty message object with the required structure
-  const createEmptyMessage = () => ({
-    _id: `empty-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    author: { name: 'Unknown', role: 'unknown' },
-    message: 'No message content',
-    channel: 'unknown',
-    direction: 0,
-    extraPayload: {
-      sentimentAnalysis: {
-        sentiment: { score: 0, sentiment: 'neutral' },
-        profanity: { score: 0, words: [] },
-        intents: [],
-        language: 'unknown',
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-      }
-    },
-    createdAt: new Date().toISOString()
-  });
-
-  // Fetch dashboard stats
-  const fetchStats = async () => {
-    setStatsLoading(true);
+  // Fetch data with applied filters
+  const fetchFilteredData = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      const params = new URLSearchParams();
+      // Prepare filters based on current selections
+      const filters = {
+        startDate: dateRange[0].toISOString(),
+        endDate: dateRange[1].toISOString(),
+        channel: selectedChannel,
+        queue: selectedQueue
+      };
       
-      if (filters.timeRange && filters.timeRange.length === 2 && filters.timeRange[0] && filters.timeRange[1]) {
-        params.append('startDate', filters.timeRange[0].toISOString());
-        params.append('endDate', filters.timeRange[1].toISOString());
-      }
+      // Fetch all dashboard data in one call
+      const dashboardData = await apiService.getDashboardData(filters);
       
-      const response = await fetch(`${API_URL}/dashboard/stats?${params.toString()}`);
+      // Update state with received data (with safe defaults)
+      setSentimentData(dashboardData.sentiment || { 
+        distribution: [], 
+        averageScore: 0, 
+        radarData: [],
+        total: 0
+      });
+      setChannelData(dashboardData.channelData || []);
+      setDayData(dashboardData.dayData || []);
+      setLanguageData(dashboardData.languageData || []);
+      setProfanityData(dashboardData.profanityStats || { 
+        percentage: 0, 
+        avgScore: 0, 
+        topWords: [], 
+        messagesWithProfanity: 0,
+        totalMessages: 0
+      });
+      setIntentsData(dashboardData.intentsData || []);
       
-      // If the API endpoint is not implemented or fails, calculate stats from fetched messages
-      if (!response.ok) {
-        console.warn('Stats API not available, calculating from messages');
-        calculateStatsFromMessages();
-        return;
-      }
+      // Fetch messages separately (with pagination)
+      fetchMessages(1, filters);
       
-      const data = await response.json();
-      
-      // Calculate profanity stats if not provided by the API
-      if (!data.profanity) {
-        const profanityStats = calculateProfanityStats(messages);
-        data.profanity = profanityStats;
-      }
-      
-      setStats(data);
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      message.error('Failed to fetch dashboard statistics');
-      
-      // Fallback: calculate stats from messages
-      calculateStatsFromMessages();
+      console.error('Error fetching filtered data:', error);
+      setError('Failed to load filtered data. Please try again.');
     } finally {
-      setStatsLoading(false);
+      setLoading(false);
     }
   };
   
-  // Calculate stats from messages when API fails
-  const calculateStatsFromMessages = () => {
-    // Count total messages
-    const totalMessages = messages.length;
-    
-    // Calculate sentiment distribution
-    const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
-    messages.forEach(msg => {
-      const sentiment = msg.extraPayload?.sentimentAnalysis?.sentiment?.sentiment || 'neutral';
-      sentimentCounts[sentiment] = (sentimentCounts[sentiment] || 0) + 1;
-    });
-    
-    const sentimentData = Object.entries(sentimentCounts).map(([name, value]) => ({ name, value }));
-    
-    // Calculate channel distribution
-    const channelCounts = {};
-    messages.forEach(msg => {
-      const channel = msg.channel;
-      channelCounts[channel] = (channelCounts[channel] || 0) + 1;
-    });
-    
-    const channelData = Object.entries(channelCounts).map(([name, value]) => ({ name, value }));
-    
-    // Calculate language distribution
-    const languageCounts = {};
-    messages.forEach(msg => {
-      const language = msg.extraPayload?.sentimentAnalysis?.language || 'unknown';
-      languageCounts[language] = (languageCounts[language] || 0) + 1;
-    });
-    
-    const languageData = Object.entries(languageCounts).map(([name, value]) => ({ name, value }));
-    
-    // Calculate intent distribution
-    const intentCounts = {};
-    messages.forEach(msg => {
-      const intents = msg.extraPayload?.sentimentAnalysis?.intents || [];
-      intents.forEach(intent => {
-        intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+  // Fetch messages with pagination
+  const fetchMessages = async (page = 1, customFilters = null) => {
+    try {
+      const filters = customFilters || {
+        startDate: dateRange[0].toISOString(),
+        endDate: dateRange[1].toISOString(),
+        channel: selectedChannel,
+        queue: selectedQueue
+      };
+      
+      // Add filter to exclude system messages
+      filters.excludeRole = 'system';
+      
+      const result = await apiService.getMessages(filters, page, pagination.pageSize);
+      
+      setMessages(result.messages || []);
+      setPagination({
+        ...pagination,
+        current: page,
+        total: result.pagination?.total || 0
       });
-    });
-    
-    const intentData = Object.entries(intentCounts).map(([name, value]) => ({ name, value }));
-    
-    // Calculate token usage
-    const totalTokens = messages.reduce((sum, msg) => 
-      sum + (msg.extraPayload?.sentimentAnalysis?.usage?.total_tokens || 0), 0);
-    
-    const promptTokens = messages.reduce((sum, msg) => 
-      sum + (msg.extraPayload?.sentimentAnalysis?.usage?.prompt_tokens || 0), 0);
-    
-    const completionTokens = messages.reduce((sum, msg) => 
-      sum + (msg.extraPayload?.sentimentAnalysis?.usage?.completion_tokens || 0), 0);
-    
-    // Calculate estimated cost (using GPT-3.5 pricing)
-    const promptCost = (promptTokens / 1000) * 0.0005;
-    const completionCost = (completionTokens / 1000) * 0.0015;
-    const estimatedCost = promptCost + completionCost;
-    
-    // Calculate profanity stats
-    const profanityStats = calculateProfanityStats(messages);
-    
-    // Set the calculated stats
-    setStats({
-      totalMessages,
-      sentiment: sentimentData,
-      channels: channelData,
-      languages: languageData,
-      intents: intentData,
-      profanity: profanityStats,
-      tokens: { totalTokens, promptTokens, completionTokens },
-      estimatedCost
-    });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      // Don't set main error state here - just log it
+    }
   };
   
-  // Helper function to calculate profanity stats
-  const calculateProfanityStats = (messages) => {
-    // Find messages with profanity
-    const profaneMessages = messages.filter(msg => 
-      (msg.extraPayload?.sentimentAnalysis?.profanity?.score || 0) > 0
-    );
-    
-    // Calculate average profanity score
-    const averageScore = profaneMessages.length > 0 
-      ? profaneMessages.reduce((sum, msg) => 
-          sum + (msg.extraPayload?.sentimentAnalysis?.profanity?.score || 0), 0) / profaneMessages.length
-      : 0;
-    
-    // Count profane words
-    const profaneWords = {};
-    messages.forEach(msg => {
-      const words = msg.extraPayload?.sentimentAnalysis?.profanity?.words || [];
-      words.forEach(word => {
-        profaneWords[word] = (profaneWords[word] || 0) + 1;
-      });
-    });
-    
-    // Convert to array format for charts
-    const profanityWordArray = Object.entries(profaneWords).map(([name, value]) => ({
-      name, value
-    })).sort((a, b) => b.value - a.value);
-    
-    return {
-      averageScore,
-      totalProfaneMessages: profaneMessages.length,
-      words: profanityWordArray
-    };
+  // Reset filters and reload data
+  const resetFilters = () => {
+    setSelectedChannel(null);
+    setSelectedQueue(null);
+    setDateRange([moment().subtract(30, 'days'), moment()]);
+    setBreadcrumbItems([{ title: 'Home' }]);
+    fetchDashboardData();
   };
-
-  // Fetch cache stats
-  const fetchCacheStats = async () => {
-    try {
-      const response = await fetch(`${API_URL}/cache/stats`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch cache stats');
-      }
-      
-      const data = await response.json();
-      setCacheStats(data);
-    } catch (error) {
-      console.error('Error fetching cache stats:', error);
-      message.warning('Cache statistics not available');
-      
-      // Set default cache stats in case the endpoint is not implemented
-      setCacheStats({
-        stats: { hits: 0, misses: 0 },
-        keysCount: 0,
-        sampleKeys: []
-      });
+  
+  // Handle date range change
+  const handleDateRangeChange = (dates) => {
+    if (dates && dates.length === 2) {
+      console.log('Date range changed:', dates.map(date => date.format('YYYY-MM-DD')));
+      setDateRange(dates);
     }
   };
-
-  // Clear cache
-  const clearCache = async () => {
-    try {
-      const response = await fetch(`${API_URL}/cache/clear`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to clear cache');
-      }
-      
-      const data = await response.json();
-      message.success(data.message);
-      fetchCacheStats();
-    } catch (error) {
-      console.error('Error clearing cache:', error);
-      message.error('Failed to clear cache');
-    }
-  };
-
-  // Analyze text
-  const analyzeText = async () => {
-    if (!textToAnalyze.trim()) {
-      message.warning('Please enter text to analyze');
-      return;
-    }
-    
-    setAnalyzingText(true);
-    try {
-      const response = await fetch(`${API_URL}/analyze-sentiment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: textToAnalyze,
-          host: window.location.hostname,
-          model: apiModel
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to analyze text');
-      }
-      
-      const data = await response.json();
-      setAnalyzeResult(data);
-      
-      // If not from cache, update cache stats
-      if (!data.cached) {
-        fetchCacheStats();
-      }
-    } catch (error) {
-      console.error('Error analyzing text:', error);
-      message.error('Failed to analyze text');
-    } finally {
-      setAnalyzingText(false);
-    }
-  };
-
+  
   // Handle table pagination change
-  const handleTableChange = (pagination) => {
-    setPagination({
-      ...pagination
-    });
+  const handleTableChange = (pagination, filters, sorter) => {
+    fetchMessages(pagination.current);
   };
-
-  // Apply filters on load and when they change
-  useEffect(() => {
-    fetchMessages();
-    fetchStats();
-  }, [filters, pagination.current, pagination.pageSize]);
-
-  // Fetch cache stats on initial load
-  useEffect(() => {
-    fetchCacheStats();
-  }, []);
-
-  // Handle drilldown
-  const handleDrilldown = (category, value) => {
-    let newFilters = { ...filters };
-    
-    switch(category) {
-      case 'channel':
-        newFilters.channel = value;
-        break;
-      case 'sentiment':
-        newFilters.sentiment = value;
-        break;
-      case 'language':
-        newFilters.language = value;
-        break;
-      default:
-        break;
-    }
-    
-    setFilters(newFilters);
-    setDrilldown({ category, value });
-    // Reset pagination when filters change
-    setPagination({
-      ...pagination,
-      current: 1
-    });
-  };
-
-  // Reset drilldown
-  const resetDrilldown = () => {
-    setFilters({
-      channel: 'all',
-      sentiment: 'all',
-      timeRange: filters.timeRange,
-      language: 'all'
-    });
-    setDrilldown(null);
-    // Reset pagination when filters change
-    setPagination({
-      ...pagination,
-      current: 1
-    });
-  };
-
-  // Table columns
+  
+  // Define table columns with safe property access
   const columns = [
     {
-      title: 'Date',
+      title: 'Created At',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (text) => new Date(text).toLocaleString(),
-      sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+      render: (text) => text ? moment(text).format('YYYY-MM-DD HH:mm:ss') : '-',
+      sorter: (a, b) => {
+        if (!a.createdAt || !b.createdAt) return 0;
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      },
     },
     {
       title: 'Channel',
       dataIndex: 'channel',
       key: 'channel',
-      render: (text) => <Tag color="blue">{text}</Tag>
-    },
-    {
-      title: 'Direction',
-      dataIndex: 'direction',
-      key: 'direction',
-      render: (dir) => dir === 0 ? 
-        <Tag color="green">Inbound</Tag> : 
-        <Tag color="orange">Outbound</Tag>
-    },
-    {
-      title: 'Author',
-      dataIndex: ['author', 'name'],
-      key: 'author',
-      render: (name, record) => (
-        <Space>
-          <UserOutlined />
-          <span>{name}</span>
-          {record.author.role && (
-            <Tag color={record.author.role === 'agent' ? 'purple' : 'cyan'}>
-              {record.author.role}
-            </Tag>
-          )}
-        </Space>
-      )
+      filters: channels.map(channel => ({
+        text: channel.name,
+        value: channel.name,
+      })),
+      onFilter: (value, record) => record.channel === value,
     },
     {
       title: 'Message',
       dataIndex: 'message',
       key: 'message',
       ellipsis: true,
-      width: 250
+    },
+    {
+      title: 'Author',
+      dataIndex: ['author', 'name'],
+      key: 'author',
+      render: (text, record) => safelyGetNestedValue(record, 'author.name', '-'),
+    },
+    {
+      title: 'Role',
+      dataIndex: ['author', 'role'],
+      key: 'role',
+      render: (text, record) => {
+        const role = safelyGetNestedValue(record, 'author.role');
+        return role ? <Tag color={role === 'agent' ? 'blue' : 'green'}>{role}</Tag> : '-';
+      },
+      filters: [
+        { text: 'Agent', value: 'agent' },
+        { text: 'Customer', value: 'customer' },
+      ],
+      onFilter: (value, record) => safelyGetNestedValue(record, 'author.role') === value,
+    },
+    {
+      title: 'Direction',
+      dataIndex: 'direction',
+      key: 'direction',
+      render: (text) => {
+        if (text === undefined || text === null) return '-';
+        return <Tag color={text === 0 ? 'purple' : 'orange'}>{text === 0 ? 'Inbound' : 'Outbound'}</Tag>;
+      },
+      filters: [
+        { text: 'Inbound', value: 0 },
+        { text: 'Outbound', value: 1 },
+      ],
+      onFilter: (value, record) => record.direction === value,
+    },
+    {
+      title: 'Queue',
+      dataIndex: 'queue',
+      key: 'queue',
+      filters: queues.map(queue => ({
+        text: queue.name,
+        value: queue.name,
+      })),
+      onFilter: (value, record) => record.queue === value,
     },
     {
       title: 'Sentiment',
-      dataIndex: ['extraPayload', 'sentimentAnalysis', 'sentiment', 'sentiment'],
       key: 'sentiment',
       render: (text, record) => {
-        // Add null checks to avoid errors
-        const sentimentScore = record?.extraPayload?.sentimentAnalysis?.sentiment?.score;
-        const sentimentValue = record?.extraPayload?.sentimentAnalysis?.sentiment?.sentiment || 'neutral';
+        const sentiment = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.sentiment.sentiment');
+        const score = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.sentiment.score', 0);
         
-        // Use a default score if undefined
-        const score = typeof sentimentScore === 'number' ? sentimentScore : 0;
+        if (!sentiment) return '-';
+        
+        let color = 'blue';
+        let icon = <MehOutlined />;
+        
+        if (sentiment === 'positive') {
+          color = 'success';
+          icon = <SmileOutlined />;
+        } else if (sentiment === 'negative') {
+          color = 'error';
+          icon = <FrownOutlined />;
+        }
         
         return (
-          <Space>
-            {getSentimentIcon(sentimentValue)}
-            <Tag color={getSentimentColor(sentimentValue)}>
-              {sentimentValue} ({score.toFixed(2)})
+          <Tooltip title={`Score: ${score}`}>
+            <Tag color={color} icon={icon}>
+              {sentiment}
             </Tag>
-          </Space>
+          </Tooltip>
         );
-      }
+      },
+      filters: [
+        { text: 'Positive', value: 'positive' },
+        { text: 'Neutral', value: 'neutral' },
+        { text: 'Negative', value: 'negative' },
+      ],
+      onFilter: (value, record) => safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.sentiment.sentiment') === value,
     },
     {
       title: 'Profanity',
-      dataIndex: ['extraPayload', 'sentimentAnalysis', 'profanity', 'score'],
       key: 'profanity',
-      render: (score, record) => {
-        // Add null checks to avoid errors
-        const profanityScore = record?.extraPayload?.sentimentAnalysis?.profanity?.score;
-        const profaneWords = record?.extraPayload?.sentimentAnalysis?.profanity?.words || [];
+      render: (text, record) => {
+        const profanity = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.profanity', {});
+        const score = safelyGetNestedValue(profanity, 'score', 0);
+        const words = safelyGetNestedValue(profanity, 'words', []);
         
-        // Use a default score if undefined
-        const safeScore = typeof profanityScore === 'number' ? profanityScore : 0;
+        if (!profanity || score === 0) {
+          return <Tag color="green">None</Tag>;
+        }
         
         return (
-          <Space>
-            <Tag color={safeScore > 0 ? 'red' : 'green'}>
-              {safeScore > 0 ? 
-                <><WarningOutlined /> {safeScore.toFixed(2)}</> : 
-                'None'
-              }
+          <Tooltip title={`Words: ${words.join(', ')}`}>
+            <Tag color="volcano" icon={<AlertOutlined />}>
+              {score.toFixed(2)}
             </Tag>
-            {profaneWords.length > 0 && (
-              <Tooltip title={profaneWords.join(', ')}>
-                <Badge count={profaneWords.length} style={{ backgroundColor: '#f5222d' }} />
-              </Tooltip>
-            )}
-          </Space>
+          </Tooltip>
         );
       },
-      sorter: (a, b) => {
-        const scoreA = a?.extraPayload?.sentimentAnalysis?.profanity?.score || 0;
-        const scoreB = b?.extraPayload?.sentimentAnalysis?.profanity?.score || 0;
-        return scoreA - scoreB;
-      }
-    },
-    {
-      title: 'Language',
-      dataIndex: ['extraPayload', 'sentimentAnalysis', 'language'],
-      key: 'language',
-      render: (text) => <Tag>{text || 'unknown'}</Tag>
+      filters: [
+        { text: 'Contains Profanity', value: 'hasProfanity' },
+        { text: 'No Profanity', value: 'noProfanity' },
+      ],
+      onFilter: (value, record) => {
+        const score = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.profanity.score', 0);
+        const hasProfanity = score > 0;
+        return (value === 'hasProfanity' && hasProfanity) || (value === 'noProfanity' && !hasProfanity);
+      },
     },
     {
       title: 'Intents',
-      dataIndex: ['extraPayload', 'sentimentAnalysis', 'intents'],
       key: 'intents',
-      render: (intents) => {
-        // Ensure intents is an array
-        const safeIntents = Array.isArray(intents) ? intents : [];
+      render: (text, record) => {
+        const intents = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.intents', []);
+        
+        if (!intents || intents.length === 0) {
+          return <Tag color="default">None</Tag>;
+        }
+        
         return (
-          <Space wrap>
-            {safeIntents.length > 0 ? 
-              safeIntents.map(intent => (
-                <Tag key={intent} color="geekblue">{intent}</Tag>
-              )) : 
-              <Text type="secondary">-</Text>
-            }
-          </Space>
+          <>
+            {intents.slice(0, 2).map(intent => (
+              <Tag color="geekblue" key={intent}>
+                {intent}
+              </Tag>
+            ))}
+            {intents.length > 2 && <Tag>+{intents.length - 2}</Tag>}
+          </>
         );
-      }
+      },
+      filters: Array.from(new Set(intentsData.map(item => item.name || ''))).filter(Boolean).map(intent => ({
+        text: intent,
+        value: intent,
+      })),
+      onFilter: (value, record) => {
+        const intents = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.intents', []);
+        return intents && intents.includes(value);
+      },
     },
     {
-      title: 'API Cost',
-      key: 'cost',
+      title: 'Language',
+      key: 'language',
       render: (text, record) => {
-        // Safely get tokens or default to 0
-        const tokens = record?.extraPayload?.sentimentAnalysis?.usage?.total_tokens || 0;
-        // Assuming GPT-3.5-turbo pricing of $0.0015 per 1K tokens
-        const cost = (tokens / 1000) * 0.0015;
-        return `${cost.toFixed(5)}`;
-      }
-    }
+        const language = safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.language');
+        return language ? <Tag icon={<GlobalOutlined />}>{language}</Tag> : '-';
+      },
+      filters: Array.from(new Set(languageData.map(item => item.name || ''))).filter(Boolean).map(language => ({
+        text: language,
+        value: language,
+      })),
+      onFilter: (value, record) => safelyGetNestedValue(record, 'extraPayload.sentimentAnalysis.language') === value,
+    },
   ];
-
-  // Get percentages
-  const positivePct = stats.totalMessages > 0 ? 
-    (stats.sentiment.find(d => d.name === 'positive')?.value || 0) / stats.totalMessages * 100 : 0;
-  const neutralPct = stats.totalMessages > 0 ? 
-    (stats.sentiment.find(d => d.name === 'neutral')?.value || 0) / stats.totalMessages * 100 : 0;
-  const negativePct = stats.totalMessages > 0 ? 
-    (stats.sentiment.find(d => d.name === 'negative')?.value || 0) / stats.totalMessages * 100 : 0;
   
-  // Calculate profanity percentage
-  const profanityPct = stats.totalMessages > 0 ?
-    (stats.profanity?.totalProfaneMessages || 0) / stats.totalMessages * 100 : 0;
-
-  const COLORS = ['#52c41a', '#faad14', '#f5222d', '#1890ff', '#722ed1', '#eb2f96'];
-
-  // Cache hit rate calculation
-  const cacheHitRate = cacheStats ? 
-    (cacheStats.stats.hits / (cacheStats.stats.hits + cacheStats.stats.misses) * 100).toFixed(2) : 0;
-
-  // Prepare profanity word data for visualization
-  const profanityWordData = stats.profanity?.words || [];
-
-  return (
-    <Layout className="min-h-screen">
-      <Header className="bg-white shadow-md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 64, padding: '0 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Title level={3} style={{ margin: 0, marginRight: 16, color: '#1890ff' }}>
-            <LineChartOutlined style={{ marginRight: 8 }} />
-            Sentiment Analysis Dashboard
-          </Title>
-          {drilldown && (
-            <Tag color="blue" className="cursor-pointer" onClick={resetDrilldown}>
-              {drilldown.category}: {drilldown.value} ×
-            </Tag>
-          )}
-        </div>
-        <Space>
-          <Tooltip title="Profanity Analysis">
-            <Button 
-              icon={<WarningOutlined />} 
-              onClick={() => setProfanityModalVisible(true)}
-            />
-          </Tooltip>
-          <Tooltip title="Cache Statistics">
-            <Button 
-              icon={<CloudOutlined />} 
-              onClick={() => setCacheModalVisible(true)}
-            />
-          </Tooltip>
-          <Tooltip title="Analyze New Text">
-            <Button 
-              type="primary" 
-              onClick={() => setAnalyzeModalVisible(true)}
-            >
-              Analyze Text
-            </Button>
-          </Tooltip>
-        </Space>
-      </Header>
-      
-      <Content className="p-6">
-        {/* Filters */}
-        <Card 
-          className="mb-6 shadow-sm" 
-          title={<><FilterOutlined /> Filters</>}
-          extra={
-            <Button 
-              icon={<ReloadOutlined />} 
-              onClick={() => {
-                fetchMessages();
-                fetchStats();
-              }}
-              loading={loading || statsLoading}
-            >
-              Refresh Data
+  
+  // Get safe distribution values
+  const getDistributionValue = (index, defaultValue = 0) => {
+    if (!sentimentData.distribution || !Array.isArray(sentimentData.distribution) || !sentimentData.distribution[index]) {
+      return defaultValue;
+    }
+    return sentimentData.distribution[index].value || defaultValue;
+  };
+  
+  // Render full-page loading state
+  if (loading && channels.length === 0 && queues.length === 0) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Spin size="large" tip="Loading dashboard data..." />
+      </div>
+    );
+  }
+  
+  // Render error state
+  if (error && channels.length === 0 && queues.length === 0) {
+    return (
+      <div style={{ padding: '50px' }}>
+        <Alert
+          message="Error Loading Dashboard"
+          description={error}
+          type="error"
+          showIcon
+          action={
+            <Button type="primary" onClick={fetchDashboardData}>
+              Try Again
             </Button>
           }
-        >
-          <Row gutter={16}>
-            <Col span={6}>
-              <div className="mb-2">Channel</div>
-              <Select
-                value={filters.channel}
-                onChange={(value) => setFilters({...filters, channel: value})}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'all', label: 'All Channels' },
-                  ...stats.channels.map(channel => ({ 
-                    value: channel.name, 
-                    label: channel.name 
-                  }))
-                ]}
-              />
-            </Col>
-            <Col span={6}>
-              <div className="mb-2">Sentiment</div>
-              <Select
-                value={filters.sentiment}
-                onChange={(value) => setFilters({...filters, sentiment: value})}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'all', label: 'All Sentiments' },
-                  { value: 'positive', label: 'Positive' },
-                  { value: 'neutral', label: 'Neutral' },
-                  { value: 'negative', label: 'Negative' }
-                ]}
-              />
-            </Col>
-            <Col span={6}>
-              <div className="mb-2">Language</div>
-              <Select
-                value={filters.language}
-                onChange={(value) => setFilters({...filters, language: value})}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'all', label: 'All Languages' },
-                  ...stats.languages.map(lang => ({ 
-                    value: lang.name, 
-                    label: lang.name 
-                  }))
-                ]}
-              />
-            </Col>
-            <Col span={6}>
-              <div className="mb-2">Date Range</div>
-              <Space style={{ width: '100%' }}>
-                <Button 
-                  icon={<ReloadOutlined />} 
-                  onClick={() => {
-                    const newStartDate = moment().subtract(30, 'days');
-                    const newEndDate = moment();
-                    setFilters({
-                      ...filters,
-                      timeRange: [newStartDate, newEndDate]
-                    });
-                  }}
-                >
-                  Last 30 days
-                </Button>
-                <Button 
-                  onClick={() => {
-                    const newStartDate = moment().startOf('year');
-                    const newEndDate = moment();
-                    setFilters({
-                      ...filters,
-                      timeRange: [newStartDate, newEndDate]
-                    });
-                  }}
-                >
-                  Year to date
-                </Button>
-                <Button 
-                  onClick={() => {
-                    setFilters({
-                      ...filters,
-                      timeRange: [null, null]
-                    });
-                  }}
-                >
-                  Clear dates
-                </Button>
-              </Space>
-            </Col>
-          </Row>
-        </Card>
+        />
+      </div>
+    );
+  }
 
-        {/* Overview Stats */}
-        <Row gutter={16} className="mb-6">
-          <Col span={6}>
-            <Card className="shadow-sm">
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Header style={{ background: '#fff', padding: '0 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <MessageOutlined style={{ fontSize: '24px', marginRight: '12px', color: '#1890ff' }} />
+          <Title level={4} style={{ margin: 0 }}>Sentiment Analysis Dashboard</Title>
+        </div>
+        <Button 
+          icon={<ReloadOutlined />} 
+          onClick={fetchDashboardData}
+          loading={loading}
+        >
+          Refresh Data
+        </Button>
+      </Header>
+      <Content style={{ padding: '24px' }}>
+        {error && (
+          <Alert
+            message="Error"
+            description={error}
+            type="error"
+            showIcon
+            style={{ marginBottom: '16px' }}
+            closable
+          />
+        )}
+        
+        <div style={{ marginBottom: '16px' }}>
+          {breadcrumbItems.map((item, index) => (
+            <span key={index} style={{ marginRight: '8px' }}>
+              {index === 0 ? (
+                <Button type="link" onClick={resetFilters} style={{ padding: 0 }}>
+                  <HomeOutlined /> {item.title}
+                </Button>
+              ) : (
+                <>
+                  <span style={{ margin: '0 8px' }}>/</span>
+                  {item.title}
+                </>
+              )}
+            </span>
+          ))}
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <Space>
+            <ControlledDateRangePicker 
+              value={dateRange} 
+              onChange={handleDateRangeChange} 
+              disabled={loading}
+            />
+            <Select 
+              placeholder="Select Channel" 
+              style={{ width: 200 }}
+              allowClear
+              value={selectedChannel}
+              onChange={(value) => {
+                // ... (unchanged handler)
+              }}
+              loading={loading}
+              disabled={loading}
+              optionLabelProp="label"  // Use label for display in selection box
+            >
+              {channels.map(channel => (
+                <Select.Option 
+                  key={channel.channel} 
+                  value={channel.channel}
+                  label={channel.channel}  // This is what shows in the selection box
+                >
+                  {/* This is content shown in dropdown */}
+                  <div>
+                    <span>{channel.channel}</span>
+                    {channel.description && (
+                      <span style={{ color: '#999', fontSize: '0.9em', marginLeft: '5px' }}>
+                        ({channel.description})
+                      </span>
+                    )}
+                  </div>
+                </Select.Option>
+              ))}
+            </Select>
+            <Select 
+              placeholder="Select Queue" 
+              style={{ width: 200 }}
+              allowClear
+              value={selectedQueue}
+              onChange={(value) => {
+                setSelectedQueue(value);
+                if (value && selectedChannel) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Channel: ${selectedChannel}` },
+                    { title: `Queue: ${value}` }
+                  ]);
+                } else if (value) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Queue: ${value}` }
+                  ]);
+                } else if (selectedChannel) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Channel: ${selectedChannel}` }
+                  ]);
+                } else {
+                  setBreadcrumbItems([{ title: 'Home' }]);
+                }
+              }}
+              loading={loading}
+              disabled={loading}
+            >
+              {queues.map(queue => (
+                <Select.Option key={queue.id} value={queue.name}>{queue.name}</Select.Option>
+              ))}
+            </Select>
+            <Button type="primary" onClick={resetFilters} disabled={loading}>
+              Reset Filters
+            </Button>
+          </Space>
+        </div>
+        
+        {/* Statistics Row */}
+        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+          <Col xs={24} sm={8}>
+            <Card style={{ height: '100%' }}>
               <Statistic
                 title="Total Messages"
-                value={stats.totalMessages}
-                prefix={<MessageOutlined />}
-                loading={statsLoading}
+                value={sentimentData.total || 0}
+                prefix={<MessageOutlined style={{ color: '#1890ff' }} />}
+                loading={loading}
               />
             </Card>
           </Col>
-          <Col span={6}>
-            <Card className="shadow-sm">
+          <Col xs={24} sm={8}>
+            <Card style={{ height: '100%' }}>
               <Statistic
-                title="Positive Sentiment"
-                value={positivePct.toFixed(1)}
-                precision={1}
-                valueStyle={{ color: '#52c41a' }}
-                prefix={<SmileOutlined />}
-                suffix="%"
-                loading={statsLoading}
+                title="Unique Users"
+                value={messages.length > 0 ? new Set(messages.map(item => safelyGetNestedValue(item, 'author.name')).filter(Boolean)).size : 0}
+                prefix={<UserOutlined style={{ color: '#52c41a' }} />}
+                loading={loading}
               />
             </Card>
           </Col>
-          <Col span={6}>
-            <Card className="shadow-sm">
+          <Col xs={24} sm={8}>
+            <Card style={{ height: '100%' }}>
               <Statistic
-                title="Negative Sentiment"
-                value={negativePct.toFixed(1)}
-                precision={1}
-                valueStyle={{ color: '#f5222d' }}
-                prefix={<FrownOutlined />}
-                suffix="%"
-                loading={statsLoading}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card className="shadow-sm">
-              <Statistic
-                title={
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    Total API Cost
-                    <Tooltip title="View Cost Breakdown">
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        icon={<DollarOutlined />} 
-                        onClick={() => setCostBreakdownVisible(true)}
-                        style={{ marginLeft: 4 }}
-                      />
-                    </Tooltip>
-                  </div>
-                }
-                value={stats.estimatedCost}
-                precision={5}
-                prefix="$"
-                suffix={
-                  <Tooltip title={`${stats.tokens?.totalTokens?.toLocaleString()} total tokens`}>
-                    <Text type="secondary" style={{ marginLeft: 4 }}>
-                      ({stats.tokens?.totalTokens?.toLocaleString()})
-                    </Text>
-                  </Tooltip>
-                }
-                loading={statsLoading}
+                title="Active Queues"
+                value={messages.length > 0 ? new Set(messages.map(item => item.queue).filter(Boolean)).size : 0}
+                prefix={<TeamOutlined style={{ color: '#fa8c16' }} />}
+                loading={loading}
               />
             </Card>
           </Col>
         </Row>
-
-        {/* Profanity Stats */}
-        <Row gutter={16} className="mb-6">
-          <Col span={24}>
-            <Card 
-              title={
-                <Space>
-                  <WarningOutlined style={{ color: '#f5222d' }} />
-                  <span>Profanity Analysis</span>
-                </Space>
-              }
-              extra={
-                <Button type="link" onClick={() => setProfanityModalVisible(true)}>
-                  View Details
-                </Button>
-              }
-              className="shadow-sm"
-              loading={statsLoading}
-            >
-              <Row gutter={16} align="middle">
-                <Col span={6}>
-                  <Statistic
-                    title="Messages with Profanity"
-                    value={profanityPct.toFixed(1)}
-                    suffix="%"
-                    valueStyle={{ color: profanityPct > 5 ? '#f5222d' : '#52c41a' }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <Statistic
-                    title="Average Profanity Score"
-                    value={stats.profanity?.averageScore || 0}
-                    precision={2}
-                    valueStyle={{ color: (stats.profanity?.averageScore || 0) > 0.5 ? '#f5222d' : '#52c41a' }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <div style={{ padding: '0 20px' }}>
-                    <div style={{ marginBottom: 8 }}>Top Profane Words</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {profanityWordData.length > 0 ? (
-                        profanityWordData.slice(0, 10).map((word, index) => (
-                          <Tag key={index} color="red">
-                            {word.name} ({word.value})
-                          </Tag>
-                        ))
-                      ) : (
-                        <Text type="secondary">No profanity detected</Text>
-                      )}
-                    </div>
-                  </div>
-                </Col>
-              </Row>
+        
+        {/* Sentiment and Language Row */}
+        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+          <Col xs={24} lg={8}>
+            <Card title="Overall Sentiment Analysis" style={{ height: 360 }} loading={loading}>
+              {sentimentData.radarData && Array.isArray(sentimentData.radarData) && sentimentData.radarData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RadarChart outerRadius={90} data={sentimentData.radarData}>
+                    <PolarGrid />
+                    <PolarAngleAxis dataKey="subject" />
+                    <PolarRadiusAxis angle={30} domain={[0, 'auto']} />
+                    <Radar name="Sentiment Metrics" dataKey="A" stroke="#1890ff" fill="#1890ff" fillOpacity={0.6} />
+                    <RechartsTooltip />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="No sentiment data available" style={{ marginTop: '100px' }} />
+              )}
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <Tag color={sentimentData.averageScore > 0.3 ? 'success' : sentimentData.averageScore < -0.3 ? 'error' : 'blue'}>
+                  Average Score: {sentimentData.averageScore ? sentimentData.averageScore.toFixed(2) : '0.00'}
+                </Tag>
+              </div>
             </Card>
           </Col>
-        </Row>
-
-        {/* Charts */}
-        <Row gutter={16} className="mb-6">
-          <Col span={12}>
-            <Card 
-              title="Sentiment Distribution" 
-              className="shadow-sm"
-              extra={
-                <Text type="secondary">
-                  Click segments to filter
-                </Text>
-              }
-              loading={statsLoading}
-            >
-              {stats.sentiment.length > 0 ? (
+          <Col xs={24} lg={8}>
+            <Card title="Sentiment Distribution" style={{ height: 360 }} loading={loading}>
+              {sentimentData.distribution && Array.isArray(sentimentData.distribution) && sentimentData.distribution.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={stats.sentiment}
+                      data={sentimentData.distribution}
                       cx="50%"
                       cy="50%"
-                      labelLine={true}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                      innerRadius={60}
                       outerRadius={80}
                       fill="#8884d8"
+                      paddingAngle={5}
                       dataKey="value"
-                      nameKey="name"
-                      onClick={(data) => handleDrilldown('sentiment', data.name)}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
-                      {stats.sentiment.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={getSentimentColor(entry.name)} 
-                        />
+                      {sentimentData.distribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <RechartsTooltip 
-                      formatter={(value, name) => [`${value} messages (${((value / stats.totalMessages) * 100).toFixed(1)}%)`, name]}
-                    />
-                    <Legend />
+                    <RechartsTooltip />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <Empty description="No data available" />
+                <Empty description="No sentiment data available" style={{ marginTop: '100px' }} />
+              )}
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <Space>
+                  <Tag icon={<SmileOutlined />} color="success">Positive: {getDistributionValue(0)}</Tag>
+                  <Tag icon={<MehOutlined />} color="blue">Neutral: {getDistributionValue(1)}</Tag>
+                  <Tag icon={<FrownOutlined />} color="error">Negative: {getDistributionValue(2)}</Tag>
+                </Space>
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card title="Language Distribution" style={{ height: 360 }} loading={loading}>
+              {languageData && Array.isArray(languageData) && languageData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={languageData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {languageData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || '#8884d8'} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="No language data available" style={{ marginTop: '100px' }} />
               )}
             </Card>
           </Col>
-          <Col span={12}>
-            <Card 
-              title="Channel Distribution" 
-              className="shadow-sm"
-              extra={
-                <Text type="secondary">
-                  Click bars to filter
-                </Text>
-              }
-              loading={statsLoading}
-            >
-              {stats.channels.length > 0 ? (
+        </Row>
+        
+        {/* Time and Channel Analysis Row */}
+        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+          <Col xs={24} lg={12}>
+            <Card title="Daily Sentiment Breakdown" style={{ height: 360 }} loading={loading}>
+              {dayData && Array.isArray(dayData) && dayData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart
-                    data={stats.channels}
-                    margin={{
-                      top: 20,
-                      right: 30,
-                      left: 20,
-                      bottom: 5,
-                    }}
+                    data={dayData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Bar dataKey="positive" stackId="a" fill="#52c41a" name="Positive" />
+                    <Bar dataKey="neutral" stackId="a" fill="#1890ff" name="Neutral" />
+                    <Bar dataKey="negative" stackId="a" fill="#f5222d" name="Negative" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="No daily data available" style={{ marginTop: '100px' }} />
+              )}
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card title="Channel Sentiment Breakdown" style={{ height: 360 }} loading={loading}>
+              {channelData && Array.isArray(channelData) && channelData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={channelData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <RechartsTooltip 
-                      formatter={(value) => [`${value} messages`, 'Count']}
-                    />
+                    <RechartsTooltip />
                     <Legend />
-                    <Bar 
-                      dataKey="value" 
-                      name="Messages" 
-                      fill="#1890ff" 
-                      onClick={(data) => handleDrilldown('channel', data.name)}
-                    />
+                    <Bar dataKey="positive" stackId="a" fill="#52c41a" name="Positive" />
+                    <Bar dataKey="neutral" stackId="a" fill="#1890ff" name="Neutral" />
+                    <Bar dataKey="negative" stackId="a" fill="#f5222d" name="Negative" />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <Empty description="No data available" />
+                <Empty description="No channel data available" style={{ marginTop: '100px' }} />
               )}
             </Card>
           </Col>
         </Row>
-
-        <Row gutter={16} className="mb-6">
-          <Col span={12}>
-            <Card 
-              title={
-                <Space>
-                  <FileWordOutlined />
-                  <span>Intent Word Cloud</span>
-                </Space>
-              }
-              className="shadow-sm"
-              loading={statsLoading}
-            >
-              <WordCloud data={stats.intents} />
+        
+        {/* Intent Analysis Row */}
+        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+          <Col xs={24} lg={12}>
+            <Card title="Intent Analysis Word Cloud" style={{ height: 360, padding: '10px' }} loading={loading}>
+              {intentsData && Array.isArray(intentsData) && intentsData.length > 0 ? (
+                <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+                  {generateWordCloudData(intentsData).map((word, index) => (
+                    <div 
+                      key={index}
+                      style={{
+                        position: 'absolute',
+                        left: `${30 + Math.random() * 40}%`,
+                        top: `${20 + Math.random() * 60}%`,
+                        fontSize: `${word.size}px`,
+                        color: word.color,
+                        transform: `rotate(${Math.random() * 30 - 15}deg)`,
+                        fontWeight: Math.random() > 0.7 ? 'bold' : 'normal',
+                        opacity: 0.8 + Math.random() * 0.2,
+                        textShadow: '1px 1px 1px rgba(0,0,0,0.1)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {word.text}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty description="No intent data available" style={{ marginTop: '100px' }} />
+              )}
             </Card>
           </Col>
-          <Col span={12}>
-            <Card 
-              title="Language Distribution" 
-              className="shadow-sm"
-              extra={
-                <Text type="secondary">
-                  Click segments to filter
-                </Text>
-              }
-              loading={statsLoading}
-            >
-              {stats.languages.length > 0 ? (
+          <Col xs={24} lg={12}>
+            <Card title="Top User Intents" style={{ height: 360 }} loading={loading}>
+              {intentsData && Array.isArray(intentsData) && intentsData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={intentsData.slice(0, 8)} // Show top 8 intents
+                    layout="vertical"
+                    margin={{ top: 20, right: 30, left: 100, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis dataKey="name" type="category" />
+                    <RechartsTooltip />
+                    <Bar dataKey="value" fill="#8884d8" name="Count" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty description="No intent data available" style={{ marginTop: '100px' }} />
+              )}
+            </Card>
+          </Col>
+        </Row>
+        
+        {/* Profanity Analysis Row */}
+        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+          <Col xs={24} lg={8}>
+            <Card title="Profanity Overview" style={{ height: 360 }} loading={loading}>
+              <div style={{ marginBottom: '20px' }}>
+                <h4>Messages with Profanity</h4>
+                <Progress 
+                  percent={profanityData.percentage ? profanityData.percentage.toFixed(1) : 0}
+                  status={profanityData.percentage > 10 ? "exception" : "active"}
+                />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <h4>Average Profanity Score</h4>
+                <Progress 
+                  percent={profanityData.avgScore ? (profanityData.avgScore * 100).toFixed(1) : 0}
+                  status={profanityData.avgScore > 0.3 ? "exception" : "active"}
+                />
+              </div>
+              {profanityData.messagesWithProfanity > 0 ? (
+                <ResponsiveContainer width="100%" height={170}>
                   <PieChart>
                     <Pie
-                      data={stats.languages}
+                      data={[
+                        { name: 'Clean', value: sentimentData.total - profanityData.messagesWithProfanity, color: '#52c41a' },
+                        { name: 'Profane', value: profanityData.messagesWithProfanity, color: '#f5222d' }
+                      ]}
                       cx="50%"
                       cy="50%"
-                      labelLine={true}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
+                      innerRadius={40}
+                      outerRadius={60}
+                      paddingAngle={5}
                       dataKey="value"
-                      nameKey="name"
-                      onClick={(data) => handleDrilldown('language', data.name)}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
-                      {stats.languages.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORS[index % COLORS.length]} 
-                        />
-                      ))}
+                      <Cell fill="#52c41a" />
+                      <Cell fill="#f5222d" />
                     </Pie>
-                    <RechartsTooltip 
-                      formatter={(value, name) => [`${value} messages (${((value / stats.totalMessages) * 100).toFixed(1)}%)`, name]}
-                    />
-                    <Legend />
+                    <RechartsTooltip />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <Empty description="No data available" />
+                <div style={{ textAlign: 'center', marginTop: '30px' }}>
+                  <Empty description="No profanity detected" />
+                </div>
+              )}
+            </Card>
+          </Col>
+          <Col xs={24} lg={16}>
+            <Card title="Top Profane Words" style={{ height: 360, overflow: 'auto' }} loading={loading}>
+              {profanityData.topWords && Array.isArray(profanityData.topWords) && profanityData.topWords.length > 0 ? (
+                <div>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart
+                      data={profanityData.topWords.slice(0, 10)}
+                      layout="vertical"
+                      margin={{ top: 20, right: 30, left: 100, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="word" type="category" />
+                      <RechartsTooltip />
+                      <Bar dataKey="count" fill="#ff4d4f" name="Count" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div style={{ marginTop: '20px' }}>
+                    <List
+                      grid={{ gutter: 16, column: 4 }}
+                      dataSource={profanityData.topWords.slice(0, 8)}
+                      renderItem={item => (
+                        <List.Item>
+                          <Tag color="volcano" style={{ margin: '5px' }}>
+                            {item.word} <Badge count={item.count} style={{ backgroundColor: '#ff4d4f' }} />
+                          </Tag>
+                        </List.Item>
+                      )}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', paddingTop: '100px' }}>
+                  <Empty description="No profanity detected in the current data set" />
+                </div>
               )}
             </Card>
           </Col>
         </Row>
 
-        {/* Messages Table */}
+        {/* Message Details Table */}
         <Card 
-          title={
-            <Space>
-              <MessageOutlined />
-              <span>Message Details</span>
-              <Tag color="blue">{filteredMessages.length} messages</Tag>
-            </Space>
-          } 
-          className="shadow-sm"
+          title="Message Details" 
+          style={{ marginBottom: '24px' }}
+          extra={
+            <div>
+              <span style={{ marginRight: '10px' }}>Total: {pagination.total} messages</span>
+            </div>
+          }
         >
           <Table 
-            dataSource={filteredMessages} 
-            columns={columns} 
+            dataSource={messages} 
+            columns={columns}
             rowKey="_id"
-            loading={loading}
             pagination={{
               current: pagination.current,
               pageSize: pagination.pageSize,
               total: pagination.total,
-              onChange: (page, pageSize) => setPagination({ current: page, pageSize })
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '20', '50', '100'],
+              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`
             }}
             onChange={handleTableChange}
-            scroll={{ x: 1200 }}
+            scroll={{ x: 1300 }}
+            loading={loading}
           />
         </Card>
       </Content>
-
-      {/* Profanity Analysis Modal */}
-      <Modal
-        title={
-          <Space>
-            <WarningOutlined style={{ color: '#f5222d' }} />
-            <span>Profanity Analysis</span>
-          </Space>
-        }
-        open={profanityModalVisible}
-        onCancel={() => setProfanityModalVisible(false)}
-        footer={[
-          <Button 
-            key="close" 
-            type="primary" 
-            onClick={() => setProfanityModalVisible(false)}
-          >
-            Close
-          </Button>
-        ]}
-        width={800}
-      >
-        <Row gutter={16} className="mb-4">
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Messages with Profanity"
-                value={stats.profanity?.totalProfaneMessages || 0}
-                suffix={`/${stats.totalMessages}`}
-                valueStyle={{ color: '#f5222d' }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Profanity Percentage"
-                value={profanityPct}
-                precision={1}
-                suffix="%"
-                valueStyle={{ color: profanityPct > 5 ? '#f5222d' : '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Average Profanity Score"
-                value={stats.profanity?.averageScore || 0}
-                precision={2}
-                valueStyle={{ color: (stats.profanity?.averageScore || 0) > 0.5 ? '#f5222d' : '#52c41a' }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Profanity Word List */}
-        <Card title="Profane Words Detected" className="mb-4">
-          {profanityWordData.length > 0 ? (
-            <List
-              grid={{ gutter: 16, column: 3 }}
-              dataSource={profanityWordData}
-              renderItem={(item) => (
-                <List.Item>
-                  <Tag color="red" style={{ fontSize: 14, padding: '4px 8px' }}>
-                    {item.name} <Badge count={item.value} style={{ backgroundColor: '#ff4d4f' }} />
-                  </Tag>
-                </List.Item>
-              )}
-            />
-          ) : (
-            <Empty description="No profanity detected in the analyzed messages" />
-          )}
-        </Card>
-
-        {/* Channels with most profanity */}
-        <Card title="Profanity by Channel">
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart
-              data={stats.channels
-                .filter(channel => channel.value > 0)
-                .map(channel => ({
-                  name: channel.name,
-                  profanityCount: Math.floor(Math.random() * channel.value * 0.2), // Mock data - replace with actual
-                  totalCount: channel.value
-                }))
-                .sort((a, b) => (b.profanityCount / b.totalCount) - (a.profanityCount / a.totalCount))
-              }
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <RechartsTooltip formatter={(value, name) => [value, name === 'profanityRate' ? 'Profanity Rate' : name]} />
-              <Legend />
-              <Bar dataKey="profanityCount" name="Messages with Profanity" stackId="a" fill="#f5222d" />
-              <Bar dataKey="totalCount" name="Total Messages" stackId="a" fill="#1890ff" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </Modal>
-
-      {/* Cache Statistics Modal */}
-      <Modal
-        title={
-          <Space>
-            <CloudOutlined />
-            <span>Cache Statistics</span>
-          </Space>
-        }
-        open={cacheModalVisible}
-        onCancel={() => setCacheModalVisible(false)}
-        footer={[
-          <Button 
-            key="refresh" 
-            icon={<ReloadOutlined />} 
-            onClick={fetchCacheStats}
-          >
-            Refresh
-          </Button>,
-          <Button 
-            key="clear" 
-            danger 
-            icon={<DeleteOutlined />} 
-            onClick={clearCache}
-          >
-            Clear Cache
-          </Button>,
-          <Button 
-            key="close" 
-            type="primary" 
-            onClick={() => setCacheModalVisible(false)}
-          >
-            Close
-          </Button>
-        ]}
-        width={800}
-      >
-        {cacheStats ? (
-          <>
-            <Row gutter={16} className="mb-4">
-              <Col span={8}>
-                <Card>
-                  <Statistic
-                    title="Cache Items"
-                    value={cacheStats.keysCount}
-                    prefix={<CloudOutlined />}
-                  />
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card>
-                  <Statistic
-                    title="Cache Hit Rate"
-                    value={cacheHitRate}
-                    precision={2}
-                    suffix="%"
-                    valueStyle={{ color: Number(cacheHitRate) > 50 ? '#52c41a' : '#f5222d' }}
-                    prefix={<ClockCircleOutlined />}
-                  />
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card>
-                  <Statistic
-                    title="Estimated Savings"
-                    value={cacheStats.stats.hits * 0.00001}
-                    precision={5}
-                    prefix="$"
-                    valueStyle={{ color: '#1890ff' }}
-                    suffix={<Text type="secondary">({cacheStats.stats.hits} hits)</Text>}
-                  />
-                </Card>
-              </Col>
-            </Row>
-            
-            <Descriptions title="Cache Details" bordered>
-              <Descriptions.Item label="Hits" span={1}>{cacheStats.stats.hits}</Descriptions.Item>
-              <Descriptions.Item label="Misses" span={1}>{cacheStats.stats.misses}</Descriptions.Item>
-              <Descriptions.Item label="Keys Count" span={1}>{cacheStats.keysCount}</Descriptions.Item>
-              <Descriptions.Item label="Average TTL" span={3}>24 hours</Descriptions.Item>
-            </Descriptions>
-            
-            <Divider />
-            
-            <div className="mb-4">
-              <Title level={5}>Sample Cached Keys</Title>
-              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                {cacheStats.sampleKeys.map((key, index) => (
-                  <Tag key={index} className="mb-2">{key}</Tag>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="text-center py-8">
-            <Spin />
-            <div className="mt-4">Loading cache statistics...</div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Cost Breakdown Modal */}
-      <Modal
-        title={
-          <Space>
-            <DollarOutlined />
-            <span>Cost Breakdown</span>
-          </Space>
-        }
-        open={costBreakdownVisible}
-        onCancel={() => setCostBreakdownVisible(false)}
-        footer={[
-          <Button 
-            key="close" 
-            type="primary" 
-            onClick={() => setCostBreakdownVisible(false)}
-          >
-            Close
-          </Button>
-        ]}
-        width={600}
-      >
-        <Descriptions title="OpenAI API Cost Details" bordered>
-          <Descriptions.Item label="Prompt Tokens" span={3}>
-            {stats.tokens?.promptTokens?.toLocaleString() || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Completion Tokens" span={3}>
-            {stats.tokens?.completionTokens?.toLocaleString() || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Total Tokens" span={3}>
-            {stats.tokens?.totalTokens?.toLocaleString() || 0}
-          </Descriptions.Item>
-          <Descriptions.Item label="Prompt Cost" span={3}>
-            ${((stats.tokens?.promptTokens || 0) / 1000 * 0.0005).toFixed(5)}
-          </Descriptions.Item>
-          <Descriptions.Item label="Completion Cost" span={3}>
-            ${((stats.tokens?.completionTokens || 0) / 1000 * 0.0015).toFixed(5)}
-          </Descriptions.Item>
-          <Descriptions.Item label="Total Cost" span={3}>
-            <Text strong>${stats.estimatedCost?.toFixed(5) || 0}</Text>
-          </Descriptions.Item>
-        </Descriptions>
-        
-        <Divider />
-        
-        <Title level={5}>Cost Reduction with Caching</Title>
-        {cacheStats ? (
-          <>
-            <Paragraph>
-              Your cache has saved approximately <Text strong>${(cacheStats.stats.hits * 0.00001).toFixed(5)}</Text> with {cacheStats.stats.hits} cache hits.
-            </Paragraph>
-            <Progress 
-              percent={Number(cacheHitRate)} 
-              status="active" 
-              strokeColor={{
-                '0%': '#108ee9',
-                '100%': '#87d068',
-              }}
-              format={percent => `${percent.toFixed(2)}% Hit Rate`}
-            />
-          </>
-        ) : (
-          <Spin />
-        )}
-      </Modal>
-
-      {/* Analyze Text Modal */}
-      <Modal
-        title={
-          <Space>
-            <LineChartOutlined />
-            <span>Analyze New Text</span>
-          </Space>
-        }
-        open={analyzeModalVisible}
-        onCancel={() => {
-          setAnalyzeModalVisible(false);
-          setAnalyzeResult(null);
-          setTextToAnalyze('');
-        }}
-        footer={[
-          <Button 
-            key="model" 
-            onClick={() => {
-              Modal.info({
-                title: 'Select AI Model',
-                content: (
-                  <div>
-                    <p className="mb-4">Choose an OpenAI model for sentiment analysis:</p>
-                    <Select
-                      value={apiModel}
-                      onChange={(value) => setApiModel(value)}
-                      style={{ width: '100%' }}
-                      options={[
-                        { value: 'gpt-3.5-turbo-0125', label: 'GPT-3.5 Turbo (0.0005 / 0.0015 per 1K tokens)' },
-                        { value: 'gpt-4-turbo-0125', label: 'GPT-4 Turbo (0.01 / 0.03 per 1K tokens)' },
-                        { value: 'gpt-4-0125', label: 'GPT-4 (0.03 / 0.06 per 1K tokens)' }
-                      ]}
-                    />
-                  </div>
-                ),
-                onOk() {},
-              });
-            }}
-          >
-            Model: {apiModel.split('-').slice(0, 2).join('-')}
-          </Button>,
-          <Button 
-            key="analyze" 
-            type="primary" 
-            icon={<SendOutlined />} 
-            onClick={analyzeText}
-            loading={analyzingText}
-            disabled={!textToAnalyze.trim()}
-          >
-            Analyze
-          </Button>
-        ]}
-        width={800}
-      >
-        <div className="mb-4">
-          <div className="mb-2">Enter text to analyze:</div>
-          <TextArea 
-            rows={6} 
-            value={textToAnalyze}
-            onChange={(e) => setTextToAnalyze(e.target.value)}
-            placeholder="Type or paste text here for sentiment analysis..."
-          />
-        </div>
-
-        {analyzingText && (
-          <div className="text-center py-4">
-            <Spin />
-            <div className="mt-2">Analyzing text...</div>
-          </div>
-        )}
-
-        {analyzeResult && !analyzingText && (
-          <div>
-            <Alert
-              message={analyzeResult.cached ? "Result from cache" : "Fresh Analysis"}
-              type={analyzeResult.cached ? "success" : "info"}
-              showIcon
-              className="mb-4"
-            />
-
-            <Card className="mb-4">
-              <Row gutter={16}>
-                <Col span={8}>
-                  <Statistic
-                    title="Sentiment"
-                    value={analyzeResult.sentiment.sentiment}
-                    valueStyle={{ 
-                      color: getSentimentColor(analyzeResult.sentiment.sentiment)
-                    }}
-                    prefix={getSentimentIcon(analyzeResult.sentiment.sentiment)}
-                  />
-                </Col>
-                <Col span={8}>
-                  <Statistic
-                    title="Score"
-                    value={analyzeResult.sentiment.score}
-                    precision={2}
-                  />
-                </Col>
-                <Col span={8}>
-                  <Statistic
-                    title="Language"
-                    value={analyzeResult.language}
-                  />
-                </Col>
-              </Row>
-            </Card>
-
-            <Divider orientation="left">Details</Divider>
-            
-            <Descriptions bordered>
-              <Descriptions.Item label="Profanity Score" span={3}>
-                {analyzeResult.profanity.score}
-              </Descriptions.Item>
-              <Descriptions.Item label="Profane Words" span={3}>
-                {analyzeResult.profanity.words.length > 0 ? 
-                  analyzeResult.profanity.words.map(word => (
-                    <Tag key={word} color="red">{word}</Tag>
-                  )) : 
-                  <Text type="secondary">None detected</Text>
-                }
-              </Descriptions.Item>
-              <Descriptions.Item label="Intents" span={3}>
-                {analyzeResult.intents.map(intent => (
-                  <Tag key={intent} color="blue">{intent}</Tag>
-                ))}
-              </Descriptions.Item>
-              <Descriptions.Item label="API Tokens" span={3}>
-                <Space>
-                  <Badge status="processing" text={`${analyzeResult.usage.total_tokens} total`} />
-                  <Badge status="default" text={`${analyzeResult.usage.prompt_tokens} prompt`} />
-                  <Badge status="default" text={`${analyzeResult.usage.completion_tokens} completion`} />
-                </Space>
-              </Descriptions.Item>
-              {analyzeResult.cost && (
-                <Descriptions.Item label="Cost" span={3}>
-                  <Space>
-                    <Badge status="success" text={`$${analyzeResult.cost.totalCost.toFixed(6)} total`} />
-                    <Badge status="default" text={`$${analyzeResult.cost.inputCost.toFixed(6)} input`} />
-                    <Badge status="default" text={`$${analyzeResult.cost.outputCost.toFixed(6)} output`} />
-                  </Space>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          </div>
-        )}
-      </Modal>
+      <Footer style={{ textAlign: 'center' }}>
+        Sentiment Analysis Dashboard ©2025
+      </Footer>
     </Layout>
   );
 };
