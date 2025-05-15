@@ -3,9 +3,15 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Card, Row, Col, Typography, Select, DatePicker, Table, Tag, Statistic, Space, Button, Breadcrumb, Progress, List, Badge, Tooltip, Spin, Alert, Empty } from 'antd';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { MessageOutlined, UserOutlined, TeamOutlined, HomeOutlined, SmileOutlined, MehOutlined, FrownOutlined, AlertOutlined, GlobalOutlined, ReloadOutlined } from '@ant-design/icons';
-import moment from 'moment';
 import apiService from '../services/apiService';
-import ControlledDateRangePicker from './DatePickerFix'; 
+import ControlledDateRangePicker from './DatePicker'; 
+import LanguageDistributionChart from './LanguageDonutChart'; 
+import TrendStatisticCard from './TrendStatisticCard';
+import SentimentTrendCard from './SentimentTrendCard';
+import ExportableChart from './ExportableChart';
+import MessageTable from './MessageTable';
+import { exportChartToCSV, exportChartToExcel, exportMessagesToExcel } from '../utils/ExportUtils';
+import dayjs from 'dayjs';
 
 const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
@@ -15,23 +21,33 @@ const { RangePicker } = DatePicker;
 const generateWordCloudData = (intents) => {
   if (!intents || !Array.isArray(intents) || intents.length === 0) return [];
   
-  const maxFontSize = 65;
-  const minFontSize = 16;
-  const maxCount = Math.max(...intents.map(w => w.value || 0));
-  const minCount = Math.min(...intents.map(w => w.value || 0));
+  // Make sure we're working with valid data
+  const validIntents = intents.filter(intent => 
+    intent && typeof intent === 'object' && 
+    intent.name && 
+    typeof intent.value === 'number' && 
+    !isNaN(intent.value)
+  );
+
+  if (validIntents.length === 0) return [];
   
-  const range = maxCount - minCount;
+  const maxFontSize = 42; // Reduced from 65
+  const minFontSize = 14; // Reduced from 16
+  
+  // Find min and max count values
+  const maxCount = Math.max(...validIntents.map(w => w.value));
+  const minCount = Math.min(...validIntents.map(w => w.value));
+  
+  const range = maxCount - minCount || 1; // Avoid division by zero
   const fontSizeRange = maxFontSize - minFontSize;
   
   // Generate colors based on count
   const colors = ['#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', '#a4de6c', '#d0ed57', '#ffc658'];
   
-  return intents.map(intent => ({
-    text: intent.name || 'Unknown',
-    value: intent.value || 0,
-    size: range === 0 
-      ? minFontSize + fontSizeRange / 2
-      : minFontSize + (((intent.value || 0) - minCount) / range) * fontSizeRange,
+  return validIntents.map(intent => ({
+    text: intent.name,
+    value: intent.value,
+    size: minFontSize + ((intent.value - minCount) / range) * fontSizeRange,
     color: colors[Math.floor(Math.random() * colors.length)]
   }));
 };
@@ -73,7 +89,7 @@ const SentimentDashboard = () => {
   // State for UI
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [selectedQueue, setSelectedQueue] = useState(null);
-  const [dateRange, setDateRange] = useState([moment().subtract(30, 'days'), moment()]);
+  const [dateRange, setDateRange] = useState([dayjs().subtract(30, 'days'), dayjs()]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ title: 'Home' }]);
   
@@ -216,7 +232,7 @@ const SentimentDashboard = () => {
   const resetFilters = () => {
     setSelectedChannel(null);
     setSelectedQueue(null);
-    setDateRange([moment().subtract(30, 'days'), moment()]);
+    setDateRange([dayjs().subtract(30, 'days'), dayjs()]);
     setBreadcrumbItems([{ title: 'Home' }]);
     fetchDashboardData();
   };
@@ -240,7 +256,7 @@ const SentimentDashboard = () => {
       title: 'Created At',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (text) => text ? moment(text).format('YYYY-MM-DD HH:mm:ss') : '-',
+      render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '-',
       sorter: (a, b) => {
         if (!a.createdAt || !b.createdAt) return 0;
         return new Date(a.createdAt) - new Date(b.createdAt);
@@ -480,22 +496,7 @@ const SentimentDashboard = () => {
           />
         )}
         
-        <div style={{ marginBottom: '16px' }}>
-          {breadcrumbItems.map((item, index) => (
-            <span key={index} style={{ marginRight: '8px' }}>
-              {index === 0 ? (
-                <Button type="link" onClick={resetFilters} style={{ padding: 0 }}>
-                  <HomeOutlined /> {item.title}
-                </Button>
-              ) : (
-                <>
-                  <span style={{ margin: '0 8px' }}>/</span>
-                  {item.title}
-                </>
-              )}
-            </span>
-          ))}
-        </div>
+      
         
         <div style={{ marginBottom: '16px' }}>
           <Space>
@@ -577,43 +578,74 @@ const SentimentDashboard = () => {
         {/* Statistics Row */}
         <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
           <Col xs={24} sm={8}>
-            <Card style={{ height: '100%' }}>
-              <Statistic
-                title="Total Messages"
-                value={sentimentData.total || 0}
-                prefix={<MessageOutlined style={{ color: '#1890ff' }} />}
-                loading={loading}
-              />
-            </Card>
+            <TrendStatisticCard
+              title="Total Messages"
+              value={sentimentData.total || 0}
+              previousValue={(sentimentData.total || 0) * 0.85} // Demo calculation
+              trendData={[
+                { value: (sentimentData.total || 0) * 0.75 },
+                { value: (sentimentData.total || 0) * 0.85 },
+                { value: (sentimentData.total || 0) * 0.9 },
+                { value: (sentimentData.total || 0) * 0.95 },
+                { value: sentimentData.total || 0 }
+              ]}
+              prefix={<MessageOutlined style={{ color: '#1890ff' }} />}
+              loading={loading}
+              color="#1890ff"
+            />
           </Col>
           <Col xs={24} sm={8}>
-            <Card style={{ height: '100%' }}>
-              <Statistic
-                title="Unique Users"
-                value={messages.length > 0 ? new Set(messages.map(item => safelyGetNestedValue(item, 'author.name')).filter(Boolean)).size : 0}
-                prefix={<UserOutlined style={{ color: '#52c41a' }} />}
-                loading={loading}
-              />
-            </Card>
+            <SentimentTrendCard
+              title="Overall Sentiment"
+              averageScore={sentimentData.averageScore || 0}
+              previousAverageScore={(sentimentData.averageScore || 0) * 0.9} // Demo value
+              distribution={{
+                positive: getDistributionValue(0, 0),
+                neutral: getDistributionValue(1, 0),
+                negative: getDistributionValue(2, 0)
+              }}
+              previousDistribution={{
+                positive: getDistributionValue(0, 0) * 0.85, // Demo values
+                neutral: getDistributionValue(1, 0) * 1.1,
+                negative: getDistributionValue(2, 0) * 0.95
+              }}
+              trendData={[
+                { value: ((sentimentData.averageScore || 0) * 0.9 + 1) / 2 * 100 },
+                { value: ((sentimentData.averageScore || 0) * 0.95 + 1) / 2 * 100 },
+                { value: ((sentimentData.averageScore || 0) + 1) / 2 * 100 }
+              ]}
+              loading={loading}
+            />
           </Col>
           <Col xs={24} sm={8}>
-            <Card style={{ height: '100%' }}>
-              <Statistic
-                title="Active Queues"
-                value={messages.length > 0 ? new Set(messages.map(item => item.queue).filter(Boolean)).size : 0}
-                prefix={<TeamOutlined style={{ color: '#fa8c16' }} />}
-                loading={loading}
-              />
-            </Card>
+            <SentimentTrendCard
+              title="Channel Sentiment"
+              averageScore={dayData.length > 0 ? dayData.reduce((sum, day) => sum + (day.positive - day.negative) / (day.total || 1), 0) / dayData.length : 0}
+              previousAverageScore={dayData.length > 0 ? dayData.reduce((sum, day) => sum + (day.positive - day.negative) / (day.total || 1), 0) / dayData.length * 0.85 : 0}
+              distribution={{
+                positive: dayData.reduce((sum, day) => sum + day.positive, 0),
+                neutral: dayData.reduce((sum, day) => sum + day.neutral, 0),
+                negative: dayData.reduce((sum, day) => sum + day.negative, 0)
+              }}
+              previousDistribution={{
+                positive: dayData.reduce((sum, day) => sum + day.positive, 0) * 0.9,
+                neutral: dayData.reduce((sum, day) => sum + day.neutral, 0) * 1.05,
+                negative: dayData.reduce((sum, day) => sum + day.negative, 0) * 0.95
+              }}
+              trendData={dayData.slice(-8).map(day => ({
+                value: ((day.positive - day.negative) / (day.total || 1) + 1) / 2 * 100
+              }))}
+              loading={loading}
+            />
           </Col>
         </Row>
         
         {/* Sentiment and Language Row */}
         <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
           <Col xs={24} lg={8}>
-            <Card title="Overall Sentiment Analysis" style={{ height: 360 }} loading={loading}>
+            <Card title="Overall Sentiment Analysis" style={{ height: 400 }} loading={loading}>
               {sentimentData.radarData && Array.isArray(sentimentData.radarData) && sentimentData.radarData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={250}>
                   <RadarChart outerRadius={90} data={sentimentData.radarData}>
                     <PolarGrid />
                     <PolarAngleAxis dataKey="subject" />
@@ -633,9 +665,9 @@ const SentimentDashboard = () => {
             </Card>
           </Col>
           <Col xs={24} lg={8}>
-            <Card title="Sentiment Distribution" style={{ height: 360 }} loading={loading}>
+            <Card title="Sentiment Distribution" style={{ height: 400 }} loading={loading}>
               {sentimentData.distribution && Array.isArray(sentimentData.distribution) && sentimentData.distribution.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
                     <Pie
                       data={sentimentData.distribution}
@@ -668,38 +700,14 @@ const SentimentDashboard = () => {
             </Card>
           </Col>
           <Col xs={24} lg={8}>
-            <Card title="Language Distribution" style={{ height: 360 }} loading={loading}>
-              {languageData && Array.isArray(languageData) && languageData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={languageData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {languageData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color || '#8884d8'} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <Empty description="No language data available" style={{ marginTop: '100px' }} />
-              )}
-            </Card>
+            <LanguageDistributionChart languageData={languageData} loading={loading} />
           </Col>
         </Row>
         
         {/* Time and Channel Analysis Row */}
         <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
           <Col xs={24} lg={12}>
-            <Card title="Daily Sentiment Breakdown" style={{ height: 360 }} loading={loading}>
+            <Card  title="Daily Sentiment Breakdown" style={{ height: 460 }} loading={loading}>
               {dayData && Array.isArray(dayData) && dayData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart
@@ -719,10 +727,10 @@ const SentimentDashboard = () => {
               ) : (
                 <Empty description="No daily data available" style={{ marginTop: '100px' }} />
               )}
-            </Card>
+            </Card >
           </Col>
           <Col xs={24} lg={12}>
-            <Card title="Channel Sentiment Breakdown" style={{ height: 360 }} loading={loading}>
+            <Card title="Channel Sentiment Breakdown" style={{ height: 460 }} loading={loading}>
               {channelData && Array.isArray(channelData) && channelData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart
@@ -749,23 +757,31 @@ const SentimentDashboard = () => {
         {/* Intent Analysis Row */}
         <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
           <Col xs={24} lg={12}>
-            <Card title="Intent Analysis Word Cloud" style={{ height: 360, padding: '10px' }} loading={loading}>
+            <Card title="Intent Analysis Word Cloud" style={{ height: 360 }} loading={loading}>
               {intentsData && Array.isArray(intentsData) && intentsData.length > 0 ? (
-                <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ 
+                  width: '100%', 
+                  height: 300, 
+                  position: 'relative', 
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '10px'
+                }}>
                   {generateWordCloudData(intentsData).map((word, index) => (
                     <div 
                       key={index}
                       style={{
-                        position: 'absolute',
-                        left: `${30 + Math.random() * 40}%`,
-                        top: `${20 + Math.random() * 60}%`,
+                        margin: '5px 8px',
                         fontSize: `${word.size}px`,
                         color: word.color,
-                        transform: `rotate(${Math.random() * 30 - 15}deg)`,
                         fontWeight: Math.random() > 0.7 ? 'bold' : 'normal',
-                        opacity: 0.8 + Math.random() * 0.2,
                         textShadow: '1px 1px 1px rgba(0,0,0,0.1)',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        transform: `rotate(${Math.random() * 20 - 10}deg)`,
+                        display: 'inline-block',
+                        cursor: 'default'
                       }}
                     >
                       {word.text}
@@ -803,7 +819,7 @@ const SentimentDashboard = () => {
         {/* Profanity Analysis Row */}
         <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
           <Col xs={24} lg={8}>
-            <Card title="Profanity Overview" style={{ height: 360 }} loading={loading}>
+            <Card title="Profanity Overview" style={{ height: 460 }} loading={loading}>
               <div style={{ marginBottom: '20px' }}>
                 <h4>Messages with Profanity</h4>
                 <Progress 
@@ -848,7 +864,7 @@ const SentimentDashboard = () => {
             </Card>
           </Col>
           <Col xs={24} lg={16}>
-            <Card title="Top Profane Words" style={{ height: 360, overflow: 'auto' }} loading={loading}>
+            <Card title="Top Profane Words" style={{ height: 460, overflow: 'auto' }} loading={loading}>
               {profanityData.topWords && Array.isArray(profanityData.topWords) && profanityData.topWords.length > 0 ? (
                 <div>
                   <ResponsiveContainer width="100%" height={250}>

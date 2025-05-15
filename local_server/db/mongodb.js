@@ -17,7 +17,7 @@ const mongoose = require('mongoose');
 async function getMessages(filters = {}, page = 1, limit = 100) {
   try {
     const query = buildQueryFromFilters(filters);
-    
+    query['author.role'] = { $ne: 'system' };
     // Add filter to exclude specific roles if requested
     if (filters.excludeRole) {
       query['author.role'] = { $ne: filters.excludeRole };
@@ -135,6 +135,8 @@ async function getSentimentByChannel(filters = {}) {
   try {
     const query = buildQueryFromFilters(filters);
     
+    query['author.role'] = { $ne: 'system' };
+
     const results = await Message.aggregate([
       { $match: query },
       { 
@@ -195,6 +197,8 @@ async function getSentimentByDay(filters = {}, days = 30) {
     // Ensure we have a date range in the query
     const query = { ...buildQueryFromFilters(filters) };
     
+    query['author.role'] = { $ne: 'system' };
+
     // Default to last 30 days if no date range specified
     if (!query.createdAt) {
       const endDate = new Date();
@@ -273,6 +277,8 @@ async function getLanguageDistribution(filters = {}) {
   try {
     const query = buildQueryFromFilters(filters);
     
+    query['author.role'] = { $ne: 'system' };
+
     const results = await Message.aggregate([
       { $match: query },
       { 
@@ -314,6 +320,8 @@ async function getProfanityStats(filters = {}) {
   try {
     const query = buildQueryFromFilters(filters);
     
+    query['author.role'] = { $ne: 'system' };
+
     // Count total messages
     const totalMessages = await Message.countDocuments(query);
     
@@ -378,6 +386,8 @@ async function getProfanityStats(filters = {}) {
 async function getIntentsDistribution(filters = {}) {
   try {
     const query = buildQueryFromFilters(filters);
+    
+    query['author.role'] = { $ne: 'system' };
     
     // Ensure intents array exists and is not empty
     const intentQuery = {

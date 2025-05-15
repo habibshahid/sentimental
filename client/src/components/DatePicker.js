@@ -1,8 +1,6 @@
-// DatePickerFix.js - Custom controlled DatePicker implementation
-
 import React, { useState } from 'react';
 import { DatePicker, Space } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
 
@@ -45,7 +43,7 @@ const ControlledDateRangePicker = ({ value, onChange, disabled }) => {
   const handleDateRangeChange = (dates) => {
     if (onChange && dates && dates.length === 2) {
       // Enforce dates are not in the future
-      const now = moment();
+      const now = dayjs();
       const adjustedDates = [
         dates[0].isAfter(now) ? now : dates[0],
         dates[1].isAfter(now) ? now : dates[1]
@@ -78,7 +76,7 @@ const ControlledDateRangePicker = ({ value, onChange, disabled }) => {
       mode={['date', 'date']}
       picker="date"
       format="YYYY-MM-DD"
-      disabledDate={(current) => current && current > moment().endOf('day')}
+      disabledDate={(current) => current && current > dayjs().endOf('day')}
       popupStyle={{ minWidth: '320px' }} // Ensure calendar is wide enough
     />
   );
