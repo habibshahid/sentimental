@@ -2,12 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Card, Row, Col, Typography, Select, DatePicker, Table, Tag, Statistic, Space, Button, Breadcrumb, Progress, List, Badge, Tooltip, Spin, Alert, Empty } from 'antd';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { MessageOutlined, UserOutlined, TeamOutlined, HomeOutlined, SmileOutlined, MehOutlined, FrownOutlined, AlertOutlined, GlobalOutlined, ReloadOutlined } from '@ant-design/icons';
+import { MessageOutlined, UserOutlined, TeamOutlined, HomeOutlined, SmileOutlined, MehOutlined, FrownOutlined, AlertOutlined, GlobalOutlined, ReloadOutlined, DollarCircleOutlined } from '@ant-design/icons';
 import apiService from '../services/apiService';
 import ControlledDateRangePicker from './DatePicker'; 
 import LanguageDistributionChart from './LanguageDonutChart'; 
 import TrendStatisticCard from './TrendStatisticCard';
 import SentimentTrendCard from './SentimentTrendCard';
+import CostAnalysisModal from './CostAnalysisModal';
 import ExportableChart from './ExportableChart';
 import MessageTable from './MessageTable';
 import { exportChartToCSV, exportChartToExcel, exportMessagesToExcel } from '../utils/ExportUtils';
@@ -92,7 +93,7 @@ const SentimentDashboard = () => {
   const [dateRange, setDateRange] = useState([dayjs().subtract(30, 'days'), dayjs()]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [breadcrumbItems, setBreadcrumbItems] = useState([{ title: 'Home' }]);
-  
+  const [costModalVisible, setCostModalVisible] = useState(false);
   // Load initial data
   useEffect(() => {
     fetchDashboardData();
@@ -250,6 +251,16 @@ const SentimentDashboard = () => {
     fetchMessages(pagination.current);
   };
   
+  // Show cost analysis modal
+  const showCostModal = () => {
+    setCostModalVisible(true);
+  };
+
+  // Hide cost analysis modal
+  const hideCostModal = () => {
+    setCostModalVisible(false);
+  };
+
   // Define table columns with safe property access
   const columns = [
     {
@@ -476,13 +487,22 @@ const SentimentDashboard = () => {
           <MessageOutlined style={{ fontSize: '24px', marginRight: '12px', color: '#1890ff' }} />
           <Title level={4} style={{ margin: 0 }}>Sentiment Analysis Dashboard</Title>
         </div>
-        <Button 
-          icon={<ReloadOutlined />} 
-          onClick={fetchDashboardData}
-          loading={loading}
-        >
-          Refresh Data
-        </Button>
+        <Space>
+          <Button 
+            icon={<DollarCircleOutlined />} 
+            onClick={showCostModal}
+            disabled={loading}
+          >
+            Cost Analysis
+          </Button>
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={fetchDashboardData}
+            loading={loading}
+          >
+            Refresh Data
+          </Button>
+        </Space>
       </Header>
       <Content style={{ padding: '24px' }}>
         {error && (
@@ -495,9 +515,12 @@ const SentimentDashboard = () => {
             closable
           />
         )}
-        
-      
-        
+        <CostAnalysisModal 
+          visible={costModalVisible} 
+          onClose={hideCostModal} 
+          messages={messages} 
+          loading={loading}
+        />
         <div style={{ marginBottom: '16px' }}>
           <Space>
             <ControlledDateRangePicker 

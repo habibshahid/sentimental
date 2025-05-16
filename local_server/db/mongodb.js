@@ -18,6 +18,7 @@ async function getMessages(filters = {}, page = 1, limit = 100) {
   try {
     const query = buildQueryFromFilters(filters);
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
     // Add filter to exclude specific roles if requested
     if (filters.excludeRole) {
       query['author.role'] = { $ne: filters.excludeRole };
@@ -61,7 +62,8 @@ async function getSentimentStats(filters = {}) {
     
     // Exclude system messages if processing sentiment
     query['author.role'] = { $ne: 'system' };
-    
+    query['messageType'] = { $ne: 'notification' };
+
     // Aggregate sentiment counts
     const sentimentResults = await Message.aggregate([
       { $match: query },
@@ -136,6 +138,7 @@ async function getSentimentByChannel(filters = {}) {
     const query = buildQueryFromFilters(filters);
     
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
 
     const results = await Message.aggregate([
       { $match: query },
@@ -198,6 +201,7 @@ async function getSentimentByDay(filters = {}, days = 30) {
     const query = { ...buildQueryFromFilters(filters) };
     
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
 
     // Default to last 30 days if no date range specified
     if (!query.createdAt) {
@@ -278,6 +282,7 @@ async function getLanguageDistribution(filters = {}) {
     const query = buildQueryFromFilters(filters);
     
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
 
     const results = await Message.aggregate([
       { $match: query },
@@ -321,6 +326,7 @@ async function getProfanityStats(filters = {}) {
     const query = buildQueryFromFilters(filters);
     
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
 
     // Count total messages
     const totalMessages = await Message.countDocuments(query);
@@ -388,6 +394,7 @@ async function getIntentsDistribution(filters = {}) {
     const query = buildQueryFromFilters(filters);
     
     query['author.role'] = { $ne: 'system' };
+    query['messageType'] = { $ne: 'notification' };
     
     // Ensure intents array exists and is not empty
     const intentQuery = {
