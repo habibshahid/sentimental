@@ -222,6 +222,59 @@ const apiService = {
     } catch (error) {
       return handleApiError(error);
     }
+  },
+
+  /**
+   * Get current balance information for the host
+   * @returns {Promise<Object>} Balance information
+   */
+  getCurrentBalance: async () => {
+    try {
+      // Get hostname from the window location
+      const hostname = window.location.hostname;
+      
+      // Create API URL with the hostname as query parameter
+      const apiUrl = `${process.env.REACT_APP_SENTIMENT_BALANCE_URL || 'http://localhost:5000/api'}/balance`;
+
+      const response = await axios.get(apiUrl, {
+        params: { host: hostname }
+      });
+      
+      // If the API call is successful, return the data
+      if (response.data && response.data.success) {
+        return {
+          balance: response.data.balance || 0,
+          totalCreditsAdded: response.data.totalCreditsAdded || 0,
+          totalCreditsUsed: response.data.totalCreditsUsed || 0,
+          lastUpdated: response.data.lastUpdated,
+          active: response.data.active || false,
+          hostExists: response.data.hostExists || false,
+          error: null
+        };
+      } else {
+        // If the API returns success: false
+        return {
+          balance: 0,
+          totalCreditsAdded: 0,
+          totalCreditsUsed: 0,
+          lastUpdated: null,
+          active: false,
+          hostExists: false,
+          error: response.data.message || 'Unknown error'
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+      return {
+        balance: 0,
+        totalCreditsAdded: 0,
+        totalCreditsUsed: 0,
+        lastUpdated: null,
+        active: false,
+        hostExists: false,
+        error: error.message || 'Failed to fetch balance'
+      };
+    }
   }
 };
 

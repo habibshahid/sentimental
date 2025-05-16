@@ -1,10 +1,11 @@
-// src/components/CostAnalysisModal.js
+// src/components/CostAnalysisModal.js (Updated with Balance Display)
 import React, { useState, useEffect } from 'react';
-import { Modal, Table, Card, Statistic, Row, Col, Empty, Spin, Alert, Button, Space, Tabs } from 'antd';
+import { Modal, Table, Card, Statistic, Row, Col, Empty, Spin, Alert, Button, Space, Tabs, Divider } from 'antd';
 import { DollarCircleOutlined, FileExcelOutlined, LineChartOutlined, TableOutlined, BarChartOutlined, PieChartOutlined, ApiOutlined } from '@ant-design/icons';
 import { exportChartToExcel } from '../utils/ExportUtils';
 import CostAnalysisChart from './CostAnalysisChart';
 import ModelCostAnalysis from './ModelCostAnalysis';
+import BalanceDisplay from './BalanceDisplay'; // Import the new component
 import dayjs from 'dayjs';
 
 /**
@@ -30,6 +31,7 @@ const CostAnalysisModal = ({ visible, onClose, messages = [], loading = false })
   const [activeTab, setActiveTab] = useState('summary');
   const [chartType, setChartType] = useState('line');
   const [modelViewType, setModelViewType] = useState('pie');
+  const [balanceRefreshKey, setBalanceRefreshKey] = useState(0); // For triggering balance refresh
 
   // Calculate cost statistics when messages change
   useEffect(() => {
@@ -189,6 +191,11 @@ const CostAnalysisModal = ({ visible, onClose, messages = [], loading = false })
     exportChartToExcel(exportData, `sentiment-cost-analysis-${dayjs().format('YYYY-MM-DD')}`, columns);
   };
 
+  // Handle balance refresh
+  const handleBalanceRefresh = () => {
+    setBalanceRefreshKey(prevKey => prevKey + 1);
+  };
+
   // Define columns for the cost by date table
   const dateColumns = [
     {
@@ -266,7 +273,7 @@ const CostAnalysisModal = ({ visible, onClose, messages = [], loading = false })
       title={<span><DollarCircleOutlined style={{ marginRight: 8 }} /> Sentiment Analysis Cost Report</span>}
       open={visible}
       onCancel={onClose}
-      width={900}
+      width={1000}
       footer={[
         <Button key="export" icon={<FileExcelOutlined />} onClick={exportCostData} disabled={costStats.messagesWithCost === 0}>
           Export Cost Data
@@ -276,140 +283,161 @@ const CostAnalysisModal = ({ visible, onClose, messages = [], loading = false })
         </Button>
       ]}
     >
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '30px' }}>
-          <Spin size="large" tip="Loading cost data..." />
-        </div>
-      ) : costStats.messagesWithCost === 0 ? (
-        <Alert
-          message="No Cost Data Available"
-          description="There is no price information available in the current message set. Cost information is only available for messages processed with AI models that provide price details."
-          type="info"
-          showIcon
-        />
-      ) : (
-        <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-            <Col xs={24} sm={8}>
-              <Card>
-                <Statistic
-                  title="Total Cost"
-                  value={formatCurrency(costStats.totalPrice)}
-                  precision={6}
-                  valueStyle={{ color: '#3f8600' }}
-                  prefix={<DollarCircleOutlined />}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Card>
-                <Statistic
-                  title="Messages with Cost Data"
-                  value={costStats.messagesWithCost}
-                  suffix={`/ ${messages.length}`}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Card>
-                <Statistic
-                  title="Average Cost per Message"
-                  value={formatCurrency(costStats.averagePrice)}
-                  precision={6}
-                  valueStyle={{ color: '#3f8600' }}
-                />
-              </Card>
-            </Col>
-          </Row>
-
-          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-            <Col xs={24} sm={12}>
-              <Statistic
-                title="Input Price Total"
-                value={formatCurrency(costStats.inputPrice)}
-                precision={6}
-              />
-              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
-                ({formatPercentage(costStats.inputPrice, costStats.totalPrice)} of total cost)
-              </div>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Statistic
-                title="Output Price Total"
-                value={formatCurrency(costStats.outputPrice)}
-                precision={6}
-              />
-              <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
-                ({formatPercentage(costStats.outputPrice, costStats.totalPrice)} of total cost)
-              </div>
-            </Col>
-          </Row>
-
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={[
-              {
-                key: 'summary',
-                label: (
-                  <span>
-                    <TableOutlined />
-                    Tabular Data
-                  </span>
-                ),
-                children: (
-                  <>
-                    <h3>Cost by Date</h3>
-                    <Table
-                      dataSource={costStats.byDate}
-                      columns={dateColumns}
-                      rowKey="date"
-                      pagination={{ pageSize: 5 }}
-                      size="small"
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={16}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '30px' }}>
+              <Spin size="large" tip="Loading cost data..." />
+            </div>
+          ) : costStats.messagesWithCost === 0 ? (
+            <Alert
+              message="No Cost Data Available"
+              description="There is no price information available in the current message set. Cost information is only available for messages processed with AI models that provide price details."
+              type="info"
+              showIcon
+            />
+          ) : (
+            <>
+              <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                <Col xs={24} sm={8}>
+                  <Card>
+                    <Statistic
+                      title="Total Cost"
+                      value={formatCurrency(costStats.totalPrice)}
+                      precision={6}
+                      valueStyle={{ color: '#3f8600' }}
+                      prefix={<DollarCircleOutlined />}
                     />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card>
+                    <Statistic
+                      title="Messages with Cost Data"
+                      value={costStats.messagesWithCost}
+                      suffix={`/ ${messages.length}`}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Card>
+                    <Statistic
+                      title="Average Cost per Message"
+                      value={formatCurrency(costStats.averagePrice)}
+                      precision={6}
+                      valueStyle={{ color: '#3f8600' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
 
-                    
-                  </>
-                ),
-              },
-              {
-                key: 'chart',
-                label: (
-                  <span>
-                    <LineChartOutlined />
-                    Cost Over Time
-                  </span>
-                ),
-                children: (
-                  <CostAnalysisChart 
-                    messages={messages} 
-                    loading={loading}
-                    chartType={chartType}
-                    onChartTypeChange={setChartType}
+              <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                <Col xs={24} sm={12}>
+                  <Statistic
+                    title="Input Price Total"
+                    value={formatCurrency(costStats.inputPrice)}
+                    precision={6}
                   />
-                ),
-              },
-              {
-                key: 'models',
-                label: (
-                  <span>
-                    <ApiOutlined />
-                    Model Analysis
-                  </span>
-                ),
-                children: (
-                  <ModelCostAnalysis
-                    modelData={costStats.byModel}
-                    loading={loading}
-                    viewType={modelViewType}
-                    onViewTypeChange={setModelViewType}
+                  <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                    ({formatPercentage(costStats.inputPrice, costStats.totalPrice)} of total cost)
+                  </div>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Statistic
+                    title="Output Price Total"
+                    value={formatCurrency(costStats.outputPrice)}
+                    precision={6}
                   />
-                ),
-              }
-            ]}
-          />
-        </>
-      )}
+                  <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                    ({formatPercentage(costStats.outputPrice, costStats.totalPrice)} of total cost)
+                  </div>
+                </Col>
+              </Row>
+
+              <Tabs
+                activeKey={activeTab}
+                onChange={setActiveTab}
+                items={[
+                  {
+                    key: 'summary',
+                    label: (
+                      <span>
+                        <TableOutlined />
+                        Tabular Data
+                      </span>
+                    ),
+                    children: (
+                      <>
+                        <h3>Cost by Date</h3>
+                        <Table
+                          dataSource={costStats.byDate}
+                          columns={dateColumns}
+                          rowKey="date"
+                          pagination={{ pageSize: 5 }}
+                          size="small"
+                        />
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'chart',
+                    label: (
+                      <span>
+                        <LineChartOutlined />
+                        Cost Over Time
+                      </span>
+                    ),
+                    children: (
+                      <CostAnalysisChart 
+                        messages={messages} 
+                        loading={loading}
+                        chartType={chartType}
+                        onChartTypeChange={setChartType}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'models',
+                    label: (
+                      <span>
+                        <ApiOutlined />
+                        Model Analysis
+                      </span>
+                    ),
+                    children: (
+                      <ModelCostAnalysis
+                        modelData={costStats.byModel}
+                        loading={loading}
+                        viewType={modelViewType}
+                        onViewTypeChange={setModelViewType}
+                      />
+                    ),
+                  }
+                ]}
+              />
+            </>
+          )}
+        </Col>
+        <Col xs={24} md={8}>
+          {/* Add the BalanceDisplay component */}
+          <BalanceDisplay key={balanceRefreshKey} onRefresh={handleBalanceRefresh} />
+          
+          {!loading && costStats.messagesWithCost > 0 && (
+            <>
+              <Divider style={{ margin: '20px 0 20px 0' }} />
+              <Card title="Cost by Model">
+                <Table
+                  dataSource={costStats.byModel}
+                  columns={modelColumns}
+                  rowKey="model"
+                  pagination={{ pageSize: 5 }}
+                  size="small"
+                />
+              </Card>
+            </>
+          )}
+        </Col>
+      </Row>
     </Modal>
   );
 };
