@@ -9,7 +9,22 @@ const morgan = require('morgan');
 const fs = require('fs');
 const session = require('express-session');
 const RedisStore = require('connect-redis').default;
+const cors = require('cors');
 require('dotenv').config();
+
+const corsOptions = {
+  // Allow requests from any origin
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    // Allow all origins - you can restrict this if needed
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true, // Allow cookies to be sent with requests
+  maxAge: 86400 // Cache CORS preflight requests for 24 hours
+};
 
 // Load analytics service
 let analyticsService;
@@ -97,6 +112,12 @@ app.use((req, res, next) => {
   res.locals.basePath = APP_PATH;
   next();
 });
+
+// Apply CORS middleware to all routes
+app.use(cors(corsOptions));
+
+// Add OPTIONS handling for preflight requests
+app.options('*', cors(corsOptions));
 
 // Setup logging
 setupLogging();
