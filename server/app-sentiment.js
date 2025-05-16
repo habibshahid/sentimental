@@ -48,6 +48,26 @@ try {
   };
 }
 
+// Load balance service
+let balanceService;
+try {
+  balanceService = require('./services/balanceService');
+  console.log('Balance service loaded successfully');
+} catch (error) {
+  console.error('Error loading balance service:', error.message);
+  // Create a dummy balance service that does nothing
+  balanceService = {
+    checkBalance: () => Promise.resolve({ sufficient: true, balance: 9999 }),
+    deductCredits: () => Promise.resolve({ success: true }),
+    addCredits: () => Promise.resolve({ success: true }),
+    getHostBalance: () => Promise.resolve({ success: true, balance: 9999 }),
+    getTransactionHistory: () => Promise.resolve({ success: true, transactions: [] }),
+    getAllHosts: () => Promise.resolve({ success: true, hosts: [] }),
+    updateHostStatus: () => Promise.resolve({ success: true }),
+    refundTransaction: () => Promise.resolve({ success: true })
+  };
+}
+
 // Base path configuration
 const BASE_PATH = process.env.BASE_PATH || '/sentiment';
 const APP_PATH = normalizePath(BASE_PATH);
@@ -118,6 +138,28 @@ app.post(`/api/analyze`, async (req, res) => {
       return res.status(400).json({ error: 'host is required. e.g. host.customer.com' });
     }
     
+    // Check if host has sufficient balance before proceeding
+    // Calculate the approximate cost based on text length
+    // This is just an estimate, we'll deduct the actual cost after processing
+    const estimatedTokens = Math.ceil(text.length / 4); // Rough estimate: 4 chars per token
+    const modelPricing = tokenPricing[model] || tokenPricing[DEFAULT_MODEL];
+    const estimatedCost = (estimatedTokens / 1000) * (modelPricing.input + modelPricing.output); // Worst case cost
+    
+    // Check balance
+    const balanceCheck = await balanceService.checkBalance(host, estimatedCost);
+    
+    if (!balanceCheck.sufficient) {
+      console.log(`Insufficient balance for host ${host}: ${balanceCheck.error}`);
+      return res.status(402).json({ 
+        error: 'Payment required', 
+        details: balanceCheck.error,
+        balance: balanceCheck.balance || 0,
+        estimatedCost: estimatedCost,
+        hostExists: balanceCheck.hostExists || false,
+        active: balanceCheck.active || false
+      });
+    }
+    
     const cleanedText = cleanString(text);
     const cacheKey = generateCacheKey(cleanedText, model);
     
@@ -129,6 +171,26 @@ app.post(`/api/analyze`, async (req, res) => {
     if (cachedResult) {
       console.log(`Cache hit for: ${cacheKey}`);
       const result = JSON.parse(cachedResult);
+      
+      // For cache hits, we'll deduct a discounted cost - e.g., 10% of normal cost
+      // or you can choose not to deduct anything for cache hits
+      // Here we'll deduct 10% of the cost
+      const cacheCost = result.cost.totalCost * 0.1;
+      
+      // Deduct credits for the cache hit (if you choose to charge for cache hits)
+      if (cacheCost > 0) {
+        const deduction = await balanceService.deductCredits(
+          host, 
+          cacheCost, 
+          `Cache hit for sentiment analysis (${model})`, 
+          cacheKey
+        );
+        
+        if (!deduction.success) {
+          console.error(`Failed to deduct credits for cache hit: ${deduction.error}`);
+          // We'll continue anyway since we already checked the balance
+        }
+      }
       
       // Update analytics for cache hit
       if (host) {
@@ -150,7 +212,8 @@ app.post(`/api/analyze`, async (req, res) => {
       // Return cached result
       return res.json({
         ...result,
-        cached: true
+        cached: true,
+        balanceRemaining: balanceCheck.balance - (cacheCost || 0)
       });
     }
     
@@ -186,6 +249,21 @@ app.post(`/api/analyze`, async (req, res) => {
     
     // Calculate costs
     const costInfo = calculateCost(openAIResponse.data.usage, model);
+    
+    // Deduct the actual cost from the host's balance
+    const actualCost = costInfo.totalCost;
+    const deduction = await balanceService.deductCredits(
+      host, 
+      actualCost, 
+      `Sentiment analysis (${model})`, 
+      cacheKey
+    );
+    
+    if (!deduction.success) {
+      console.error(`Failed to deduct credits: ${deduction.error}`);
+      // Since we already checked the balance, this could be due to a concurrent update
+      // We'll continue anyway and log the error
+    }
     
     // Combine original result with usage and cost information
     const finalResult = {
@@ -225,8 +303,12 @@ app.post(`/api/analyze`, async (req, res) => {
       });
     }
     
-    // Return the final response
-    return res.json(finalResult);
+    // Return the final response with balance information
+    return res.json({
+      ...finalResult,
+      cached: false,
+      balanceRemaining: deduction.success ? deduction.balance : (balanceCheck.balance - actualCost)
+    });
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);
     return res.status(500).json({ 
@@ -433,6 +515,164 @@ app.get(`/api/analytics/hosts`, ensureAuthenticated, async (req, res) => {
   }
 });
 
+/* Balance Management API Endpoints */
+
+// Get host balance
+app.get(`/api/balance`, async (req, res) => {
+  try {
+    const host = req.query.host;
+    
+    if (!host) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Host parameter required' 
+      });
+    }
+    
+    const balanceInfo = await balanceService.getHostBalance(host);
+    
+    res.json(balanceInfo);
+  } catch (error) {
+    console.error('Error getting balance:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to retrieve balance information' 
+    });
+  }
+});
+
+// Add credits to host
+app.post(`/api/balance/add`, ensureAuthenticated, async (req, res) => {
+  try {
+    const { host, amount, description, reference } = req.body;
+    
+    if (!host || !amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Host and amount parameters required' 
+      });
+    }
+    
+    // Add credits
+    const result = await balanceService.addCredits(
+      host, 
+      parseFloat(amount), 
+      description || `Credits added by admin`, 
+      reference || null,
+      req.session.username || 'admin'
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error adding credits:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to add credits' 
+    });
+  }
+});
+
+// Get transaction history
+app.get(`/api/balance/transactions`, ensureAuthenticated, async (req, res) => {
+  try {
+    const { host, limit, page } = req.query;
+    
+    if (!host) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Host parameter required' 
+      });
+    }
+    
+    const limitInt = parseInt(limit) || 50;
+    const pageInt = parseInt(page) || 1;
+    
+    const transactions = await balanceService.getTransactionHistory(
+      host, 
+      limitInt, 
+      pageInt
+    );
+    
+    res.json(transactions);
+  } catch (error) {
+    console.error('Error getting transactions:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to retrieve transaction history' 
+    });
+  }
+});
+
+// Get all hosts with balance info
+app.get(`/api/balance/hosts`, ensureAuthenticated, async (req, res) => {
+  try {
+    const hosts = await balanceService.getAllHosts();
+    res.json(hosts);
+  } catch (error) {
+    console.error('Error getting hosts with balance:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to retrieve host information' 
+    });
+  }
+});
+
+// Update host status
+app.put(`/api/balance/status`, ensureAuthenticated, async (req, res) => {
+  try {
+    const { host, active, notes } = req.body;
+    
+    if (!host || active === undefined) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Host and active parameters required' 
+      });
+    }
+    
+    const result = await balanceService.updateHostStatus(
+      host, 
+      !!active, 
+      notes
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating host status:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update host status' 
+    });
+  }
+});
+
+// Refund a transaction
+app.post(`/api/balance/refund`, ensureAuthenticated, async (req, res) => {
+  try {
+    const { transactionId, reason } = req.body;
+    
+    if (!transactionId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Transaction ID required' 
+      });
+    }
+    
+    const result = await balanceService.refundTransaction(
+      transactionId, 
+      reason || 'Admin refund', 
+      req.session.username || 'admin'
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error refunding transaction:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to process refund' 
+    });
+  }
+});
+
 /**
  * Authentication & Dashboard Routes
  */
@@ -485,6 +725,13 @@ app.get('/', ensureAuthenticated, (req, res) => {
   });
 });
 
+// Balance dashboard route
+app.get('/balance', ensureAuthenticated, (req, res) => {
+  res.render('balance', { 
+    username: req.session.username || 'User'
+  });
+});
+
 app.get('/dashboard', ensureAuthenticated, async (req, res) => {
   try {
     // Your existing dashboard route logic here
@@ -510,7 +757,7 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
     openapi: '3.0.0',
     info: {
       title: 'Sentiment Analysis API',
-      description: 'API for analyzing text sentiment with caching and cost tracking',
+      description: 'API for analyzing text sentiment with caching, cost tracking, and balance management',
       version: '1.0.0'
     },
     servers: [
@@ -529,7 +776,7 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['text'],
+                  required: ['text', 'host'],
                   properties: {
                     text: {
                       type: 'string',
@@ -542,7 +789,7 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
                     },
                     host: {
                       type: 'string',
-                      description: 'Optional host identifier'
+                      description: 'Host identifier (required for balance tracking)'
                     }
                   }
                 }
@@ -578,7 +825,24 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
                       language: { type: 'string' },
                       usage: { type: 'object' },
                       cost: { type: 'object' },
-                      cached: { type: 'boolean' }
+                      cached: { type: 'boolean' },
+                      balanceRemaining: { type: 'number' }
+                    }
+                  }
+                }
+              }
+            },
+            '402': {
+              description: 'Payment required - insufficient balance',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' },
+                      details: { type: 'string' },
+                      balance: { type: 'number' },
+                      estimatedCost: { type: 'number' }
                     }
                   }
                 }
@@ -587,6 +851,265 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
           }
         }
       },
+      '/api/balance': {
+        get: {
+          summary: 'Get host balance information',
+          parameters: [
+            {
+              name: 'host',
+              in: 'query',
+              required: true,
+              schema: {
+                type: 'string'
+              },
+              description: 'Host identifier'
+            }
+          ],
+          responses: {
+            '200': {
+              description: 'Host balance information',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      balance: { type: 'number' },
+                      totalCreditsAdded: { type: 'number' },
+                      totalCreditsUsed: { type: 'number' },
+                      lastUpdated: { type: 'string', format: 'date-time' },
+                      active: { type: 'boolean' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/balance/add': {
+        post: {
+          summary: 'Add credits to host balance',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['host', 'amount'],
+                  properties: {
+                    host: {
+                      type: 'string',
+                      description: 'Host identifier'
+                    },
+                    amount: {
+                      type: 'number',
+                      description: 'Amount to add'
+                    },
+                    description: {
+                      type: 'string',
+                      description: 'Optional description'
+                    },
+                    reference: {
+                      type: 'string',
+                      description: 'Optional reference'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Credits added successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      balance: { type: 'number' },
+                      added: { type: 'number' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/balance/transactions': {
+        get: {
+          summary: 'Get transaction history for a host',
+          parameters: [
+            {
+              name: 'host',
+              in: 'query',
+              required: true,
+              schema: {
+                type: 'string'
+              },
+              description: 'Host identifier'
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'integer',
+                default: 50
+              },
+              description: 'Number of transactions to return'
+            },
+            {
+              name: 'page',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'integer',
+                default: 1
+              },
+              description: 'Page number for pagination'
+            }
+          ],
+          responses: {
+            '200': {
+              description: 'Transaction history',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      transactions: { 
+                        type: 'array',
+                        items: { type: 'object' }
+                      },
+                      pagination: { type: 'object' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/balance/hosts': {
+        get: {
+          summary: 'Get all hosts with balance information',
+          responses: {
+            '200': {
+              description: 'List of hosts with balance information',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      hosts: { 
+                        type: 'array',
+                        items: { type: 'object' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/balance/status': {
+        put: {
+          summary: 'Update host status (active/inactive)',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['host', 'active'],
+                  properties: {
+                    host: {
+                      type: 'string',
+                      description: 'Host identifier'
+                    },
+                    active: {
+                      type: 'boolean',
+                      description: 'Active status'
+                    },
+                    notes: {
+                      type: 'string',
+                      description: 'Optional notes'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Host status updated',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      active: { type: 'boolean' },
+                      host: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/balance/refund': {
+        post: {
+          summary: 'Refund a transaction',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['transactionId'],
+                  properties: {
+                    transactionId: {
+                      type: 'string',
+                      description: 'Transaction ID to refund'
+                    },
+                    reason: {
+                      type: 'string',
+                      description: 'Reason for refund'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Refund processed successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      balance: { type: 'number' },
+                      refunded: { type: 'number' },
+                      transactionId: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      // Additional existing endpoints...
       '/api/batch': {
         post: {
           summary: 'Batch process multiple texts',
@@ -596,7 +1119,7 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['texts'],
+                  required: ['texts', 'host'],
                   properties: {
                     texts: {
                       type: 'array',
@@ -607,6 +1130,10 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
                       type: 'string',
                       description: 'OpenAI model to use',
                       default: DEFAULT_MODEL
+                    },
+                    host: {
+                      type: 'string',
+                      description: 'Host identifier (required for balance tracking)'
                     }
                   }
                 }
@@ -633,42 +1160,7 @@ app.get('/api/docs', ensureAuthenticated, (req, res) => {
             }
           }
         }
-      },
-      '/api/cache/stats': {
-        get: {
-          summary: 'Get cache statistics',
-          responses: {
-            '200': {
-              description: 'Cache statistics',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object'
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      '/api/analytics': {
-        get: {
-          summary: 'Get analytics data',
-          responses: {
-            '200': {
-              description: 'Analytics data',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object'
-                  }
-                }
-              }
-            }
-          }
-        }
       }
-      // Additional endpoints documentation
     }
   };
   
@@ -881,10 +1373,42 @@ async function processText(text, model, host) {
   const cacheKey = generateCacheKey(cleanedText, model);
   const startTime = Date.now();
   
+  // Check balance before processing
+  const estimatedTokens = Math.ceil(text.length / 4); // Rough estimate
+  const modelPricing = tokenPricing[model] || tokenPricing[DEFAULT_MODEL];
+  const estimatedCost = (estimatedTokens / 1000) * (modelPricing.input + modelPricing.output);
+  
+  // Check balance
+  const balanceCheck = await balanceService.checkBalance(host, estimatedCost);
+  
+  if (!balanceCheck.sufficient) {
+    console.log(`Insufficient balance for host ${host} in batch processing: ${balanceCheck.error}`);
+    return { 
+      error: 'Payment required', 
+      details: balanceCheck.error,
+      balance: balanceCheck.balance || 0,
+      estimatedCost: estimatedCost,
+      text: text.substring(0, 50) + (text.length > 50 ? '...' : '')
+    };
+  }
+  
   // Check cache first
   const cachedResult = await redis.get(cacheKey);
   if (cachedResult) {
     const result = JSON.parse(cachedResult);
+    
+    // For cache hits, deduct a small fee or nothing
+    const cacheCost = result.cost.totalCost * 0.1;
+    
+    // Deduct credits for the cache hit (if needed)
+    if (cacheCost > 0) {
+      await balanceService.deductCredits(
+        host, 
+        cacheCost, 
+        `Cache hit for batch sentiment analysis (${model})`, 
+        cacheKey
+      );
+    }
     
     // Update analytics for cache hit
     if (host) {
@@ -927,6 +1451,15 @@ async function processText(text, model, host) {
   // Calculate costs
   const costInfo = calculateCost(openAIResponse.data.usage, model);
   
+  // Deduct the actual cost from the host's balance
+  const actualCost = costInfo.totalCost;
+  await balanceService.deductCredits(
+    host, 
+    actualCost, 
+    `Batch sentiment analysis (${model})`, 
+    cacheKey
+  );
+  
   // Prepare final result
   const finalResult = {
     ...result,
@@ -968,24 +1501,34 @@ async function processText(text, model, host) {
 
 // Calculate summary statistics for batch processing
 function calculateBatchSummary(batchResults) {
+  const successfulResults = batchResults.filter(r => !r.error);
+  const failedResults = batchResults.filter(r => r.error);
+  
   const summary = {
     totalTexts: batchResults.length,
-    cached: batchResults.filter(r => r.cached).length,
-    fresh: batchResults.filter(r => !r.cached).length,
-    avgSentimentScore: batchResults.reduce((sum, r) => sum + r.sentiment.score, 0) / batchResults.length,
-    totalCost: batchResults.reduce((sum, r) => sum + r.cost.totalCost, 0),
-    totalPrice: batchResults.reduce((sum, r) => sum + r.cost.totalPrice, 0),
-    profit: batchResults.reduce((sum, r) => sum + (r.cost.totalPrice - r.cost.totalCost), 0),
+    successful: successfulResults.length,
+    failed: failedResults.length,
+    cached: successfulResults.filter(r => r.cached).length,
+    fresh: successfulResults.filter(r => !r.cached).length,
+    avgSentimentScore: successfulResults.length > 0 ? 
+      successfulResults.reduce((sum, r) => sum + r.sentiment.score, 0) / successfulResults.length : 0,
+    totalCost: successfulResults.reduce((sum, r) => sum + r.cost.totalCost, 0),
+    totalPrice: successfulResults.reduce((sum, r) => sum + r.cost.totalPrice, 0),
+    profit: successfulResults.reduce((sum, r) => sum + (r.cost.totalPrice - r.cost.totalCost), 0),
     sentimentBreakdown: {
-      positive: batchResults.filter(r => r.sentiment.sentiment === 'positive').length,
-      neutral: batchResults.filter(r => r.sentiment.sentiment === 'neutral').length,
-      negative: batchResults.filter(r => r.sentiment.sentiment === 'negative').length
+      positive: successfulResults.filter(r => r.sentiment.sentiment === 'positive').length,
+      neutral: successfulResults.filter(r => r.sentiment.sentiment === 'neutral').length,
+      negative: successfulResults.filter(r => r.sentiment.sentiment === 'negative').length
     },
-    intents: {}
+    intents: {},
+    errors: {
+      balanceErrors: failedResults.filter(r => r.details && r.details.includes('balance')).length,
+      otherErrors: failedResults.filter(r => !r.details || !r.details.includes('balance')).length
+    }
   };
   
-  // Count intents across all results
-  batchResults.forEach(r => {
+  // Count intents across all successful results
+  successfulResults.forEach(r => {
     r.intents.forEach(intent => {
       summary.intents[intent] = (summary.intents[intent] || 0) + 1;
     });

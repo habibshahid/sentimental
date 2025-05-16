@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balance Management - Sentiment Analysis Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            border: none;
+        }
+        .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+            padding: 1rem 1.25rem;
+            border-top-left-radius: 10px !important;
+            border-top-right-radius: 10px !important;
+        }
+        .header-icon {
+            margin-right: 8px;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-active {
+            background-color: #198754;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .balance-positive {
+            color: #198754;
+            font-weight: 600;
+        }
+        .balance-warning {
+            color: #fd7e14;
+            font-weight: 600;
+        }
+        .balance-negative {
+            color: #dc3545;
+            font-weight: 600;
+        }
+        .transaction-add {
+            background-color: rgba(25, 135, 84, 0.1);
+        }
+        .transaction-deduct {
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+        .transaction-refund {
+            background-color: rgba(13, 202, 240, 0.1);
+        }
+        .footer {
+            margin-top: 2rem;
+            padding: 1rem 0;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+            color: #6c757d;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="<%= basePath %>">
+                <i class="bi bi-bar-chart-line me-2"></i>
+                Sentiment Analysis Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="<%= basePath %>/">Analytics</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="<%= basePath %>/balance">Balance Management</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="<%= basePath %>/api/docs" target="_blank">API Docs</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-1"></i>
+                            <%= typeof username !== 'undefined' ? username : 'User' %>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="<%= basePath %>/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h2 class="mb-0">Host Balance Management</h2>
+                                <p class="lead mb-0">
+                                    Manage credits and track usage for each host
+                                </p>
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addHostModal">
+                                    <i class="bi bi-plus-circle me-2"></i>Add New Host
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-12 mb-3">
+                <h3>
+                    <i class="bi bi-people header-icon"></i>Hosts
+                    <div class="float-end">
+                        <button class="btn btn-sm btn-outline-secondary" id="refreshHosts">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                        </button>
+                    </div>
+                </h3>
+            </div>
+
+            <!-- Host List -->
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Host Credits and Balance</span>
+                        <input type="text" class="form-control form-control-sm w-auto" id="hostSearch" placeholder="Search hosts...">
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="hostsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Host</th>
+                                        <th>Status</th>
+                                        <th>Balance</th>
+                                        <th>Total Added</th>
+                                        <th>Total Used</th>
+                                        <th>Last Updated</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hostsTableBody">
+                                    <!-- Table content will be populated dynamically -->
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2 mb-0">Loading hosts...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-lg-12 mb-3">
+                <h3>
+                    <i class="bi bi-bank2 header-icon"></i>Transaction History
+                </h3>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Transactions for Host: <span id="currentHostName">Select a host</span></span>
+                        <div class="btn-group btn-group-sm" id="transactionTypeFilter">
+                            <button class="btn btn-outline-secondary active" data-type="all">All</button>
+                            <button class="btn btn-outline-secondary" data-type="add">Credits Added</button>
+                            <button class="btn btn-outline-secondary" data-type="deduct">Usage Charges</button>
+                            <button class="btn btn-outline-secondary" data-type="refund">Refunds</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="transactionTableContainer">
+                            <div class="text-center py-4" id="selectHostPrompt">
+                                <i class="bi bi-arrow-up-circle" style="font-size: 3rem; color: #dee2e6;"></i>
+                                <p class="mt-3 text-muted">Select a host from the table above to view transaction history</p>
+                            </div>
+                            <div class="table-responsive d-none" id="transactionTableWrapper">
+                                <table class="table table-hover" id="transactionsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Date/Time</th>
+                                            <th>Type</th>
+                                            <th>Amount</th>
+                                            <th>Balance After</th>
+                                            <th>Description</th>
+                                            <th>Performed By</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactionsTableBody">
+                                        <!-- Transactions will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                                <div class="d-flex justify-content-between align-items-center mt-3">
+                                    <div>
+                                        <span id="paginationInfo">Showing 1-50 of 100</span>
+                                    </div>
+                                    <nav aria-label="Transaction pagination">
+                                        <ul class="pagination pagination-sm" id="transactionPagination">
+                                            <!-- Pagination will be populated dynamically -->
+                                        </ul>
+                                    </nav>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-lg-12 mb-3">
+                <h3>
+                    <i class="bi bi-graph-up header-icon"></i>Balance Analytics
+                </h3>
+            </div>
+
+            <!-- Charts -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Usage Trends</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="usageChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Balance Distribution</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="balanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Sentiment Analysis Dashboard &copy; 2025</p>
+        </div>
+    </div>
+
+    <!-- Add Host Modal -->
+    <div class="modal fade" id="addHostModal" tabindex="-1" aria-labelledby="addHostModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addHostModalLabel">Add New Host</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addHostForm">
+                        <div class="mb-3">
+                            <label for="newHostName" class="form-label">Host Name</label>
+                            <input type="text" class="form-control" id="newHostName" required placeholder="e.g., customer.example.com">
+                            <div class="form-text">A unique identifier for the host. Usually a domain name.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="initialCredit" class="form-label">Initial Credit</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="initialCredit" required min="0" step="0.01" value="10">
+                            </div>
+                            <div class="form-text">The initial credit amount to add to the host's balance.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="hostNotes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="hostNotes" rows="3" placeholder="Optional notes about this host"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveNewHost">Add Host</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Credit Modal -->
+    <div class="modal fade" id="addCreditModal" tabindex="-1" aria-labelledby="addCreditModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addCreditModalLabel">Add Credits</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCreditForm">
+                        <input type="hidden" id="creditHostName">
+                        <div class="mb-3">
+                            <label for="creditAmount" class="form-label">Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="creditAmount" required min="0.01" step="0.01" value="10">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="creditDescription" class="form-label">Description</label>
+                            <input type="text" class="form-control" id="creditDescription" placeholder="Reason for adding credits">
+                        </div>
+                        <div class="mb-3">
+                            <label for="creditReference" class="form-label">Reference (Optional)</label>
+                            <input type="text" class="form-control" id="creditReference" placeholder="Invoice number, order ID, etc.">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveCredit">Add Credits</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Host Modal -->
+    <div class="modal fade" id="editHostModal" tabindex="-1" aria-labelledby="editHostModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editHostModalLabel">Edit Host</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editHostForm">
+                        <input type="hidden" id="editHostName">
+                        <div class="mb-3">
+                            <label class="form-label">Host Name</label>
+                            <input type="text" class="form-control" id="displayHostName" disabled>
+                        </div>
+                        <div class="mb-3">
+                            <label for="hostStatus" class="form-label">Status</label>
+                            <select class="form-select" id="hostStatus">
+                                <option value="true">Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editHostNotes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="editHostNotes" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveHostEdit">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Refund Transaction Modal -->
+    <div class="modal fade" id="refundModal" tabindex="-1" aria-labelledby="refundModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="refundModalLabel">Refund Transaction</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="refundTransactionId">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        You are about to refund this transaction. The amount will be credited back to the host's balance.
+                    </div>
+                    <div class="mb-3">
+                        <label for="refundReason" class="form-label">Reason for Refund</label>
+                        <input type="text" class="form-control" id="refundReason" required placeholder="Enter reason for refund">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmRefund">Process Refund</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get base path from server-side
+        const BASE_PATH = '<%= basePath %>';
+        
+        // Current selected host and transaction page
+        let currentHost = null;
+        let currentTransactionPage = 1;
+        let currentTransactionType = 'all';
+        
+        // Charts
+        let usageChart = null;
+        let balanceChart = null;
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load hosts list
+            loadHosts();
+            
+            // Initialize charts
+            initCharts();
+            
+            // Set up event listeners
+            document.getElementById('refreshHosts').addEventListener('click', loadHosts);
+            
+            // Host search filter
+            document.getElementById('hostSearch').addEventListener('input', filterHosts);
+            
+            // Add new host
+            document.getElementById('saveNewHost').addEventListener('click', addNewHost);
+            
+            // Add credits
+            document.getElementById('saveCredit').addEventListener('click', addCredits);
+            
+            // Save host edit
+            document.getElementById('saveHostEdit').addEventListener('click', updateHostStatus);
+            
+            // Refund transaction
+            document.getElementById('confirmRefund').addEventListener('click', refundTransaction);
+            
+            // Transaction type filter
+            document.getElementById('transactionTypeFilter').addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON') {
+                    const type = e.target.getAttribute('data-type');
+                    filterTransactionsByType(type);
+                }
+            });
+        });
+        
+        // Load all hosts with balance information
+        function loadHosts() {
+            fetch(`${BASE_PATH}/api/balance/hosts`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayHosts(data.hosts);
+                        updateBalanceChart(data.hosts);
+                    } else {
+                        showError('Failed to load hosts: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading hosts:', error);
+                    showError('An error occurred while loading hosts');
+                });
+        }
+        
+        // Display hosts in the table
+        function displayHosts(hosts) {
+            const tbody = document.getElementById('hostsTableBody');
+            
+            // Clear table
+            tbody.innerHTML = '';
+            
+            if (hosts.length === 0) {
+                // Show empty state
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="bi bi-emoji-neutral" style="font-size: 2rem; color: #dee2e6;"></i>
+                            <p class="mt-2 mb-0">No hosts found. Add a new host to get started.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Add rows for each host
+            hosts.forEach(host => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-host', host.host);
+                
+                // Determine balance class
+                let balanceClass = 'balance-positive';
+                if (host.balance < 1) {
+                    balanceClass = 'balance-negative';
+                } else if (host.balance < 5) {
+                    balanceClass = 'balance-warning';
+                }
+                
+                // Format date
+                const lastUpdated = new Date(host.lastUpdated).toLocaleString();
+                
+                row.innerHTML = `
+                    <td>${host.host}</td>
+                    <td>
+                        <span class="status-dot ${host.active ? 'status-active' : 'status-inactive'}"></span>
+                        ${host.active ? 'Active' : 'Inactive'}
+                    </td>
+                    <td class="${balanceClass}">$${host.balance.toFixed(6)}</td>
+                    <td>$${host.totalCreditsAdded.toFixed(6)}</td>
+                    <td>$${host.totalCreditsUsed.toFixed(6)}</td>
+                    <td>${lastUpdated}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary btn-view-transactions" title="View Transactions">
+                                <i class="bi bi-list-ul"></i>
+                            </button>
+                            <button class="btn btn-outline-success btn-add-credit" title="Add Credits" data-bs-toggle="modal" data-bs-target="#addCreditModal">
+                                <i class="bi bi-plus-circle"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-edit-host" title="Edit Host" data-bs-toggle="modal" data-bs-target="#editHostModal">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            // Add event listeners to buttons
+            document.querySelectorAll('.btn-view-transactions').forEach(button => {
+                button.addEventListener('click', function() {
+                    const host = this.closest('tr').getAttribute('data-host');
+                    loadTransactions(host);
+                });
+            });
+            
+            document.querySelectorAll('.btn-add-credit').forEach(button => {
+                button.addEventListener('click', function() {
+                    const host = this.closest('tr').getAttribute('data-host');
+                    document.getElementById('creditHostName').value = host;
+                    document.getElementById('addCreditModalLabel').textContent = `Add Credits for ${host}`;
+                });
+            });
+            
+            document.querySelectorAll('.btn-edit-host').forEach(button => {
+                button.addEventListener('click', function() {
+                    const host = this.closest('tr').getAttribute('data-host');
+                    loadHostForEdit(host);
+                });
+            });
+        }
+        
+        // Filter hosts by search term
+        function filterHosts() {
+            const searchTerm = document.getElementById('hostSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#hostsTableBody tr');
+            
+            rows.forEach(row => {
+                const host = row.getAttribute('data-host');
+                if (host && host.toLowerCase().includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Load transactions for a host
+        function loadTransactions(host, page = 1, type = 'all') {
+            currentHost = host;
+            currentTransactionPage = page;
+            currentTransactionType = type;
+            
+            // Update current host display
+            document.getElementById('currentHostName').textContent = host;
+            
+            // Hide prompt and show table
+            document.getElementById('selectHostPrompt').classList.add('d-none');
+            document.getElementById('transactionTableWrapper').classList.remove('d-none');
+            
+            // Update filter buttons
+            document.querySelectorAll('#transactionTypeFilter button').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('data-type') === type) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Fetch transactions
+            const limit = 50;
+            fetch(`${BASE_PATH}/api/balance/transactions?host=${encodeURIComponent(host)}&page=${page}&limit=${limit}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayTransactions(data.transactions, data.pagination);
+                        updateUsageChart(data.transactions);
+                    } else {
+                        showError('Failed to load transactions: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading transactions:', error);
+                    showError('An error occurred while loading transactions');
+                });
+        }
+        
+        // Display transactions in the table
+        function displayTransactions(transactions, pagination) {
+            const tbody = document.getElementById('transactionsTableBody');
+            
+            // Clear table
+            tbody.innerHTML = '';
+            
+            if (transactions.length === 0) {
+                // Show empty state
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="bi bi-emoji-neutral" style="font-size: 2rem; color: #dee2e6;"></i>
+                            <p class="mt-2 mb-0">No transactions found for this host.</p>
+                        </td>
+                    </tr>
+                `;
+                
+                // Hide pagination
+                document.getElementById('paginationInfo').textContent = '';
+                document.getElementById('transactionPagination').innerHTML = '';
+                
+                return;
+            }
+            
+            // Filter transactions by type if needed
+            if (currentTransactionType !== 'all') {
+                transactions = transactions.filter(t => t.type === currentTransactionType);
+            }
+            
+            if (transactions.length === 0) {
+                // Show empty state after filtering
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="bi bi-emoji-neutral" style="font-size: 2rem; color: #dee2e6;"></i>
+                            <p class="mt-2 mb-0">No transactions found for the selected type.</p>
+                        </td>
+                    </tr>
+                `;
+                
+                // Update pagination info
+                document.getElementById('paginationInfo').textContent = `0 ${currentTransactionType} transactions`;
+                document.getElementById('transactionPagination').innerHTML = '';
+                
+                return;
+            }
+            
+            // Add rows for each transaction
+            transactions.forEach(transaction => {
+                const row = document.createElement('tr');
+                row.classList.add(`transaction-${transaction.type}`);
+                
+                // Format date
+                const timestamp = new Date(transaction.timestamp).toLocaleString();
+                
+                // Format amount with sign
+                const amount = transaction.amount;
+                const formattedAmount = amount >= 0 ? `+$${amount.toFixed(6)}` : `-$${Math.abs(amount).toFixed(6)}`;
+                const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
+                
+                // Format type
+                let typeLabel = '';
+                switch (transaction.type) {
+                    case 'add':
+                        typeLabel = '<span class="badge bg-success">Credit</span>';
+                        break;
+                    case 'deduct':
+                        typeLabel = '<span class="badge bg-danger">Charge</span>';
+                        break;
+                    case 'refund':
+                        typeLabel = '<span class="badge bg-info">Refund</span>';
+                        break;
+                }
+                
+                // Only show refund button for deduct transactions
+                const actionButton = transaction.type === 'deduct' 
+                    ? `<button class="btn btn-sm btn-outline-info btn-refund" title="Refund" data-transaction-id="${transaction._id}" data-bs-toggle="modal" data-bs-target="#refundModal">
+                         <i class="bi bi-arrow-counterclockwise"></i>
+                       </button>`
+                    : '';
+                
+                row.innerHTML = `
+                    <td>${timestamp}</td>
+                    <td>${typeLabel}</td>
+                    <td class="${amountClass}">${formattedAmount}</td>
+                    <td>$${transaction.balanceAfter.toFixed(6)}</td>
+                    <td>${transaction.description || '-'}</td>
+                    <td>${transaction.performedBy || 'System'}</td>
+                    <td>${actionButton}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            // Add event listeners to refund buttons
+            document.querySelectorAll('.btn-refund').forEach(button => {
+                button.addEventListener('click', function() {
+                    const transactionId = this.getAttribute('data-transaction-id');
+                    document.getElementById('refundTransactionId').value = transactionId;
+                });
+            });
+            
+            // Update pagination
+            updatePagination(pagination);
+        }
+        
+        // Update pagination controls
+        function updatePagination(pagination) {
+            const paginationInfo = document.getElementById('paginationInfo');
+            const paginationElement = document.getElementById('transactionPagination');
+            
+            // Update info text
+            const start = ((pagination.page - 1) * pagination.limit) + 1;
+            const end = Math.min(pagination.page * pagination.limit, pagination.total);
+            paginationInfo.textContent = `Showing ${start}-${end} of ${pagination.total}`;
+            
+            // Clear pagination
+            paginationElement.innerHTML = '';
+            
+            // Don't show pagination if only one page
+            if (pagination.pages <= 1) {
+                return;
+            }
+            
+            // Previous button
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${pagination.page === 1 ? 'disabled' : ''}`;
+            prevLi.innerHTML = `<button class="page-link" ${pagination.page === 1 ? 'disabled' : ''}>Previous</button>`;
+            if (pagination.page > 1) {
+                prevLi.querySelector('button').addEventListener('click', () => {
+                    loadTransactions(currentHost, pagination.page - 1, currentTransactionType);
+                });
+            }
+            paginationElement.appendChild(prevLi);
+            
+            // Page buttons
+            const maxPages = 5; // Maximum number of page buttons to show
+            const startPage = Math.max(1, pagination.page - Math.floor(maxPages / 2));
+            const endPage = Math.min(pagination.pages, startPage + maxPages - 1);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageLi = document.createElement('li');
+                pageLi.className = `page-item ${i === pagination.page ? 'active' : ''}`;
+                pageLi.innerHTML = `<button class="page-link">${i}</button>`;
+                if (i !== pagination.page) {
+                    pageLi.querySelector('button').addEventListener('click', () => {
+                        loadTransactions(currentHost, i, currentTransactionType);
+                    });
+                }
+                paginationElement.appendChild(pageLi);
+            }
+            
+            // Next button
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${pagination.page === pagination.pages ? 'disabled' : ''}`;
+            nextLi.innerHTML = `<button class="page-link" ${pagination.page === pagination.pages ? 'disabled' : ''}>Next</button>`;
+            if (pagination.page < pagination.pages) {
+                nextLi.querySelector('button').addEventListener('click', () => {
+                    loadTransactions(currentHost, pagination.page + 1, currentTransactionType);
+                });
+            }
+            paginationElement.appendChild(nextLi);
+        }
+        
+        // Filter transactions by type
+        function filterTransactionsByType(type) {
+            currentTransactionType = type;
+            loadTransactions(currentHost, 1, type);
+        }
+        
+        // Load host information for editing
+        function loadHostForEdit(host) {
+            fetch(`${BASE_PATH}/api/balance?host=${encodeURIComponent(host)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('editHostName').value = host;
+                        document.getElementById('displayHostName').value = host;
+                        document.getElementById('hostStatus').value = data.active.toString();
+                        document.getElementById('editHostNotes').value = data.notes || '';
+                    } else {
+                        showError('Failed to load host information: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading host information:', error);
+                    showError('An error occurred while loading host information');
+                });
+        }
+        
+        // Add a new host
+        function addNewHost() {
+            const host = document.getElementById('newHostName').value.trim();
+            const amount = parseFloat(document.getElementById('initialCredit').value);
+            const notes = document.getElementById('hostNotes').value.trim();
+            
+            if (!host) {
+                showError('Host name is required');
+                return;
+            }
+            
+            if (isNaN(amount) || amount < 0) {
+                showError('Initial credit must be a positive number');
+                return;
+            }
+            
+            // Add credits for new host (this will create the host if it doesn't exist)
+            fetch(`${BASE_PATH}/api/balance/add`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    host,
+                    amount,
+                    description: 'Initial credit',
+                    reference: 'New host setup'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // If notes are provided, update host status with notes
+                    if (notes) {
+                        return fetch(`${BASE_PATH}/api/balance/status`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                host,
+                                active: true,
+                                notes
+                            })
+                        });
+                    } else {
+                        return { success: true };
+                    }
+                } else {
+                    throw new Error(data.error || 'Failed to add host');
+                }
+            })
+            .then(data => {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addHostModal'));
+                modal.hide();
+                
+                // Clear form
+                document.getElementById('addHostForm').reset();
+                
+                // Show success message
+                showSuccess('Host added successfully');
+                
+                // Reload hosts
+                loadHosts();
+            })
+            .catch(error => {
+                console.error('Error adding host:', error);
+                showError('An error occurred while adding host: ' + error.message);
+            });
+        }
+        
+        // Add credits to a host
+        function addCredits() {
+            const host = document.getElementById('creditHostName').value;
+            const amount = parseFloat(document.getElementById('creditAmount').value);
+            const description = document.getElementById('creditDescription').value.trim() || 'Credit addition';
+            const reference = document.getElementById('creditReference').value.trim();
+            
+            if (!host) {
+                showError('Host name is required');
+                return;
+            }
+            
+            if (isNaN(amount) || amount <= 0) {
+                showError('Amount must be a positive number');
+                return;
+            }
+            
+            fetch(`${BASE_PATH}/api/balance/add`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    host,
+                    amount,
+                    description,
+                    reference
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addCreditModal'));
+                    modal.hide();
+                    
+                    // Clear form
+                    document.getElementById('addCreditForm').reset();
+                    
+                    // Show success message
+                    showSuccess(`Credits added successfully. New balance: $${data.balance.toFixed(6)}`);
+                    
+                    // Reload hosts
+                    loadHosts();
+                    
+                    // If transactions are currently showing for this host, reload them
+                    if (currentHost === host) {
+                        loadTransactions(host, 1);
+                    }
+                } else {
+                    showError('Failed to add credits: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error adding credits:', error);
+                showError('An error occurred while adding credits');
+            });
+        }
+        
+        // Update host status
+        function updateHostStatus() {
+            const host = document.getElementById('editHostName').value;
+            const active = document.getElementById('hostStatus').value === 'true';
+            const notes = document.getElementById('editHostNotes').value.trim();
+            
+            if (!host) {
+                showError('Host name is required');
+                return;
+            }
+            
+            fetch(`${BASE_PATH}/api/balance/status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    host,
+                    active,
+                    notes
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('editHostModal'));
+                    modal.hide();
+                    
+                    // Show success message
+                    showSuccess('Host updated successfully');
+                    
+                    // Reload hosts
+                    loadHosts();
+                } else {
+                    showError('Failed to update host: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating host:', error);
+                showError('An error occurred while updating host');
+            });
+        }
+        
+        // Refund a transaction
+        function refundTransaction() {
+            const transactionId = document.getElementById('refundTransactionId').value;
+            const reason = document.getElementById('refundReason').value.trim();
+            
+            if (!transactionId) {
+                showError('Transaction ID is required');
+                return;
+            }
+            
+            if (!reason) {
+                showError('Reason for refund is required');
+                return;
+            }
+            
+            fetch(`${BASE_PATH}/api/balance/refund`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    transactionId,
+                    reason
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('refundModal'));
+                    modal.hide();
+                    
+                    // Clear form
+                    document.getElementById('refundReason').value = '';
+                    
+                    // Show success message
+                    showSuccess(`Refund processed successfully. Amount: $${data.refunded.toFixed(6)}`);
+                    
+                    // Reload hosts
+                    loadHosts();
+                    
+                    // Reload transactions
+                    if (currentHost) {
+                        loadTransactions(currentHost, currentTransactionPage, currentTransactionType);
+                    }
+                } else {
+                    showError('Failed to process refund: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error processing refund:', error);
+                showError('An error occurred while processing refund');
+            });
+        }
+        
+        // Initialize charts
+        function initCharts() {
+            // Usage chart (empty initially)
+            const usageCtx = document.getElementById('usageChart').getContext('2d');
+            usageChart = new Chart(usageCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Credits Added',
+                            backgroundColor: 'rgba(25, 135, 84, 0.2)',
+                            borderColor: 'rgba(25, 135, 84, 1)',
+                            data: []
+                        },
+                        {
+                            label: 'Credits Used',
+                            backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            data: []
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Amount ($)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Balance chart (empty initially)
+            const balanceCtx = document.getElementById('balanceChart').getContext('2d');
+            balanceChart = new Chart(balanceCtx, {
+                type: 'pie',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            'rgba(25, 135, 84, 0.7)',
+                            'rgba(13, 110, 253, 0.7)',
+                            'rgba(255, 193, 7, 0.7)',
+                            'rgba(111, 66, 193, 0.7)',
+                            'rgba(23, 162, 184, 0.7)',
+                            'rgba(102, 16, 242, 0.7)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update usage chart based on transactions
+        function updateUsageChart(transactions) {
+            // Group by date, separate add and deduct transactions
+            const dataByDate = {};
+            
+            transactions.forEach(t => {
+                const date = new Date(t.timestamp).toLocaleDateString();
+                
+                if (!dataByDate[date]) {
+                    dataByDate[date] = { added: 0, used: 0 };
+                }
+                
+                if (t.type === 'add') {
+                    dataByDate[date].added += t.amount;
+                } else if (t.type === 'deduct') {
+                    dataByDate[date].used += Math.abs(t.amount);
+                } else if (t.type === 'refund') {
+                    // Refunds reduce the amount used
+                    dataByDate[date].used -= t.amount;
+                }
+            });
+            
+            // Sort dates chronologically
+            const sortedDates = Object.keys(dataByDate).sort((a, b) => {
+                return new Date(a) - new Date(b);
+            });
+            
+            // Prepare datasets
+            const labels = sortedDates;
+            const addedData = sortedDates.map(date => dataByDate[date].added);
+            const usedData = sortedDates.map(date => dataByDate[date].used);
+            
+            // Update chart
+            usageChart.data.labels = labels;
+            usageChart.data.datasets[0].data = addedData;
+            usageChart.data.datasets[1].data = usedData;
+            usageChart.update();
+        }
+        
+        // Update balance chart based on hosts
+        function updateBalanceChart(hosts) {
+            // Only show hosts with positive balance
+            const hostsWithBalance = hosts.filter(h => h.balance > 0);
+            
+            // Sort hosts by balance (descending)
+            hostsWithBalance.sort((a, b) => b.balance - a.balance);
+            
+            // Take top 5 hosts and group the rest as "Others"
+            let labels = [];
+            let balances = [];
+            
+            if (hostsWithBalance.length <= 6) {
+                // If 6 or fewer hosts, show all
+                labels = hostsWithBalance.map(h => h.host);
+                balances = hostsWithBalance.map(h => h.balance);
+            } else {
+                // Show top 5 and group the rest
+                const top5 = hostsWithBalance.slice(0, 5);
+                const others = hostsWithBalance.slice(5);
+                
+                labels = top5.map(h => h.host);
+                labels.push('Others');
+                
+                balances = top5.map(h => h.balance);
+                balances.push(others.reduce((sum, h) => sum + h.balance, 0));
+            }
+            
+            // Update chart
+            balanceChart.data.labels = labels;
+            balanceChart.data.datasets[0].data = balances;
+            balanceChart.update();
+        }
+        
+        // Show error message
+        function showError(message) {
+            // Create alert
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show';
+            alert.innerHTML = `
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // Add to top of page
+            const container = document.querySelector('.container');
+            container.insertBefore(alert, container.firstChild);
+            
+            // Auto-close after 5 seconds
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }, 5000);
+        }
+        
+        // Show success message
+        function showSuccess(message) {
+            // Create alert
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.innerHTML = `
+                <i class="bi bi-check-circle-fill me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // Add to top of page
+            const container = document.querySelector('.container');
+            container.insertBefore(alert, container.firstChild);
+            
+            // Auto-close after 5 seconds
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

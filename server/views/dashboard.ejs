@@ -106,30 +106,36 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#stats">Statistics</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#charts">Charts</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#test">Test API</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="<%= basePath %>/api/docs" target="_blank">API Docs</a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-person-circle me-1"></i>
-                            <%= typeof username !== 'undefined' ? username : 'User' %>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <li><a class="dropdown-item" href="<%= basePath %>/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+				<ul class="navbar-nav ms-auto">
+					<li class="nav-item">
+						<a class="nav-link active" href="<%= basePath %>/">Analytics</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="<%= basePath %>/balance">Balance Management</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="#stats">Statistics</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="#charts">Charts</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="#test">Test API</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="<%= basePath %>/api/docs" target="_blank">API Docs</a>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							<i class="bi bi-person-circle me-1"></i>
+							<%= typeof username !== 'undefined' ? username : 'User' %>
+						</a>
+						<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+							<li><a class="dropdown-item" href="<%= basePath %>/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+						</ul>
+					</li>
+				</ul>
+			</div>
         </div>
     </nav>
 
@@ -343,35 +349,63 @@
             </div>
 
             <div class="col-lg-6">
-                <div class="card">
-                    <div class="card-header">
-                        <span>Analyze Text</span>
-                    </div>
-                    <div class="card-body">
-                        <form id="testForm">
-                            <div class="mb-3">
-                                <label for="inputText" class="form-label">Text to Analyze:</label>
-                                <textarea class="form-control" id="inputText" rows="4" required
-                                    placeholder="Enter text to analyze sentiment..."></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label for="modelSelect" class="form-label">Model:</label>
-                                <select class="form-select" id="modelSelect">
-                                    <option value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125 (Default)</option>
-                                    <option value="gpt-4-turbo">gpt-4-turbo (Higher quality)</option>
-                                    <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-send me-2"></i>Analyze
-                            </button>
-                            <button type="button" id="clearCache" class="btn btn-outline-danger ms-2">
-                                <i class="bi bi-trash me-2"></i>Clear Cache
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+				<div class="card">
+					<div class="card-header">
+						<span>Analyze Text</span>
+					</div>
+					<div class="card-body">
+						<div id="balanceInfo" class="alert alert-info mb-3 d-none">
+							<div class="d-flex justify-content-between align-items-center">
+								<div>
+									<i class="bi bi-wallet2 me-2"></i>
+									<strong>Balance:</strong> <span id="hostBalance">$0.00</span>
+								</div>
+								<a href="<%= basePath %>/balance" class="btn btn-sm btn-outline-primary">Manage Balance</a>
+							</div>
+						</div>
+						<div id="insufficientBalance" class="alert alert-danger mb-3 d-none">
+							<i class="bi bi-exclamation-triangle-fill me-2"></i>
+							<strong>Insufficient Balance:</strong> <span id="balanceErrorMessage"></span>
+							<div class="mt-2">
+								<a href="<%= basePath %>/balance" class="btn btn-sm btn-outline-light">Add Credits</a>
+							</div>
+						</div>
+						<form id="testForm">
+							<div class="mb-3">
+								<label for="inputText" class="form-label">Text to Analyze:</label>
+								<textarea class="form-control" id="inputText" rows="4" required
+									placeholder="Enter text to analyze sentiment..."></textarea>
+							</div>
+							<div class="row">
+								<div class="col-md-6 mb-3">
+									<label for="modelSelect" class="form-label">Model:</label>
+									<select class="form-select" id="modelSelect">
+										<option value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125 (Default)</option>
+										<option value="gpt-4-turbo">gpt-4-turbo (Higher quality)</option>
+										<option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+									</select>
+								</div>
+								<div class="col-md-6 mb-3">
+									<label for="hostInput" class="form-label">Host Identifier:</label>
+									<select class="form-select" id="hostInput">
+										<option value="">Select a host</option>
+										<!-- Host options will be populated dynamically -->
+									</select>
+								</div>
+							</div>
+							<button type="submit" class="btn btn-primary">
+								<i class="bi bi-send me-2"></i>Analyze
+							</button>
+							<button type="button" id="clearCache" class="btn btn-outline-danger ms-2">
+								<i class="bi bi-trash me-2"></i>Clear Cache
+							</button>
+							<button type="button" id="checkBalance" class="btn btn-outline-info ms-2">
+								<i class="bi bi-wallet2 me-2"></i>Check Balance
+							</button>
+						</form>
+					</div>
+				</div>
+			</div>
 
             <div class="col-lg-6">
                 <div class="card">
@@ -559,7 +593,7 @@
             
             // Load hosts for the dropdown
             loadHosts();
-            
+			
             // Set up auto-refresh
             setInterval(fetchAnalytics, 30000); // Refresh every 30 seconds
             
@@ -569,6 +603,19 @@
                 fetchAnalytics();
             });
             
+			document.getElementById('hostInput').addEventListener('change', function() {
+				checkHostBalance(this.value);
+			});
+			  
+			document.getElementById('checkBalance').addEventListener('click', function() {
+				const host = document.getElementById('hostInput').value;
+				if (host) {
+				  checkHostBalance(host);
+				} else {
+				  alert('Please select a host to check balance.');
+				}
+			});
+			  
             // Set up form and button handlers
             document.getElementById('testForm').addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -626,6 +673,116 @@
             });
         });
 
+		/**
+		 * Check balance for a specific host
+		 * @param {string} host - The host identifier
+		 */
+		function checkHostBalance(host) {
+		  if (!host) {
+			document.getElementById('balanceInfo').classList.add('d-none');
+			document.getElementById('insufficientBalance').classList.add('d-none');
+			return;
+		  }
+		  
+		  // Show loading indicator
+		  document.getElementById('balanceInfo').classList.remove('d-none');
+		  document.getElementById('hostBalance').textContent = 'Loading...';
+		  
+		  // Hide any previous error messages
+		  document.getElementById('insufficientBalance').classList.add('d-none');
+		  
+		  fetch(`${BASE_PATH}/api/balance?host=${encodeURIComponent(host)}`)
+			.then(response => {
+			  if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			  }
+			  return response.json();
+			})
+			.then(data => {
+			  if (data.success) {
+				// Show balance info
+				document.getElementById('balanceInfo').classList.remove('d-none');
+				document.getElementById('hostBalance').textContent = `$${data.balance.toFixed(6)}`;
+				
+				// Hide insufficient balance warning if shown
+				document.getElementById('insufficientBalance').classList.add('d-none');
+				
+				// Save current host
+				testHost = host;
+				
+				// Show warning if balance is low
+				if (data.balance < 1) {
+				  document.getElementById('balanceInfo').classList.remove('alert-info');
+				  document.getElementById('balanceInfo').classList.add('alert-warning');
+				} else {
+				  document.getElementById('balanceInfo').classList.remove('alert-warning');
+				  document.getElementById('balanceInfo').classList.add('alert-info');
+				}
+			  } else {
+				// Hide balance info
+				document.getElementById('balanceInfo').classList.add('d-none');
+				
+				// Show error message
+				document.getElementById('insufficientBalance').classList.remove('d-none');
+				
+				if (!data.hostExists) {
+				  document.getElementById('balanceErrorMessage').textContent = 'Host not registered in the system.';
+				} else if (!data.active) {
+				  document.getElementById('balanceErrorMessage').textContent = 'Host account is inactive.';
+				} else {
+				  document.getElementById('balanceErrorMessage').textContent = data.error || 'Unable to retrieve balance.';
+				}
+			  }
+			})
+			.catch(error => {
+			  console.error('Error checking balance:', error);
+			  
+			  // Hide balance info
+			  document.getElementById('balanceInfo').classList.add('d-none');
+			  
+			  // Show error message
+			  document.getElementById('insufficientBalance').classList.remove('d-none');
+			  document.getElementById('balanceErrorMessage').textContent = 'Error connecting to server. Please try again.';
+			});
+		}
+
+		function calculateBatchSummary(batchResults) {
+		  const successfulResults = batchResults.filter(r => !r.error);
+		  const failedResults = batchResults.filter(r => r.error);
+		  
+		  const summary = {
+			totalTexts: batchResults.length,
+			successful: successfulResults.length,
+			failed: failedResults.length,
+			cached: successfulResults.filter(r => r.cached).length,
+			fresh: successfulResults.filter(r => !r.cached).length,
+			avgSentimentScore: successfulResults.length > 0 ? 
+			  successfulResults.reduce((sum, r) => sum + r.sentiment.score, 0) / successfulResults.length : 0,
+			totalCost: successfulResults.reduce((sum, r) => sum + r.cost.totalCost, 0),
+			totalPrice: successfulResults.reduce((sum, r) => sum + r.cost.totalPrice, 0),
+			profit: successfulResults.reduce((sum, r) => sum + (r.cost.totalPrice - r.cost.totalCost), 0),
+			sentimentBreakdown: {
+			  positive: successfulResults.filter(r => r.sentiment.sentiment === 'positive').length,
+			  neutral: successfulResults.filter(r => r.sentiment.sentiment === 'neutral').length,
+			  negative: successfulResults.filter(r => r.sentiment.sentiment === 'negative').length
+			},
+			intents: {},
+			errors: {
+			  balanceErrors: failedResults.filter(r => r.details && r.details.includes('balance')).length,
+			  otherErrors: failedResults.filter(r => !r.details || !r.details.includes('balance')).length
+			}
+		  };
+		  
+		  // Count intents across all successful results
+		  successfulResults.forEach(r => {
+			r.intents.forEach(intent => {
+			  summary.intents[intent] = (summary.intents[intent] || 0) + 1;
+			});
+		  });
+		  
+		  return summary;
+		}
+
         // Fetch analytics data
         function fetchAnalytics() {
             fetch(`/sentiment/api/analytics?host=${encodeURIComponent(currentHost)}`)
@@ -679,10 +836,15 @@
                 .then(data => {
 					console.log(data);
                     const hostSelect = document.getElementById('hostSelect');
-                    
+					const hostInput = document.getElementById('hostInput');
+					
                     // Clear existing options except default
                     while (hostSelect.options.length > 1) {
                         hostSelect.remove(1);
+                    }
+					
+					while (hostInput.options.length > 1) {
+                        hostInput.remove(1);
                     }
                     
                     // Add hosts from the API
@@ -692,6 +854,13 @@
                             option.value = host.host;
                             option.textContent = `${host.host} (${host.totalRequests} requests)`;
                             hostSelect.appendChild(option);
+                        });
+						
+						data.hosts.forEach(host => {
+                            const optionValue = document.createElement('option');
+                            optionValue.value = host.host;
+                            optionValue.textContent = `${host.host} (${host.totalRequests} requests)`;
+							hostInput.appendChild(optionValue);
                         });
                     }
                 })
