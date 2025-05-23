@@ -534,7 +534,26 @@ const SentimentDashboard = () => {
               allowClear
               value={selectedChannel}
               onChange={(value) => {
-                // ... (unchanged handler)
+                setSelectedChannel(value);
+                if (value && selectedQueue) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Channel: ${value}` },
+                    { title: `Queue: ${selectedQueue}` }
+                  ]);
+                } else if (value) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Channel: ${value}` }
+                  ]);
+                } else if (selectedQueue) {
+                  setBreadcrumbItems([
+                    { title: 'Home' },
+                    { title: `Queue: ${selectedQueue}` }
+                  ]);
+                } else {
+                  setBreadcrumbItems([{ title: 'Home' }]);
+                }
               }}
               loading={loading}
               disabled={loading}
